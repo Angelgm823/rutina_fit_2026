@@ -23,7 +23,8 @@ class _HomeState extends State<Home> {
         msg.showSnackBar(const SnackBar(content: Text('Aún no hay sesiones para exportar.')));
         return;
       }
-      kind == 'pdf' ? await exportPdf(report) : await exportImage(report);
+      final name = kind == 'pdf' ? await exportPdf(report) : await exportImage(report);
+      msg.showSnackBar(SnackBar(content: Text('Guardado en Descargas: $name')));
     } catch (e) {
       msg.showSnackBar(SnackBar(content: Text('No se pudo exportar: $e')));
     }
