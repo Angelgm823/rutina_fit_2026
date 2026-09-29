@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:syncfusion_flutter_charts/charts.dart' show SfCartesianChart, LineSeries, ColumnSeries, DateTimeAxis, NumericAxis, AxisTitle, AxisLine, MajorGridLines, MarkerSettings, TooltipBehavior;
 import 'package:rutina_fit/database/db.dart';
 import 'package:rutina_fit/models/exercises.dart';
-import 'package:rutina_fit/theme/AppTheme.dart';
+import 'package:rutina_fit/theme/app_theme.dart';
 
 class Progress extends StatefulWidget {
   const Progress({super.key});

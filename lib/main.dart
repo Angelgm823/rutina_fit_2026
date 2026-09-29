@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:rutina_fit/screens/home.dart';
-import 'package:rutina_fit/theme/AppTheme.dart';
+import 'package:rutina_fit/theme/app_theme.dart';
 
 void main() => runApp(const App());
 

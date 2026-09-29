@@ -7,7 +7,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:rutina_fit/database/db.dart';
-import 'package:rutina_fit/theme/AppTheme.dart';
+import 'package:rutina_fit/theme/app_theme.dart';
 import 'package:rutina_fit/utils/format.dart';
 
 typedef Entry = (String, List<String>);
