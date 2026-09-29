@@ -58,20 +58,23 @@ class Db {
   static Future<void> saveBike(String id, int seconds) async =>
       (await db).insert('bike', {'date': id, 'seconds': seconds});
 
+  /// Sesión sin guardar = fecha sin hora; se ubica a las 8:00.
+  static DateTime _parse(String d) => DateTime.parse(d.length <= 10 ? '$d 08:00:00' : d);
+
   /// Peso máximo por sesión de un ejercicio.
   static Future<List<Pt>> weightSeries(String ex) async {
     final rows = await (await db).rawQuery(
         'SELECT date, MAX(weight) AS w FROM logs'
         ' WHERE exercise=? AND done=1 AND weight>0 GROUP BY date ORDER BY date',
         [ex]);
-    return [for (final r in rows) Pt(DateTime.parse(r['date'] as String), (r['w'] as num).toDouble())];
+    return [for (final r in rows) Pt(_parse(r['date'] as String), (r['w'] as num).toDouble())];
   }
 
   /// Minutos de bicicleta por sesión.
   static Future<List<Pt>> bikeSeries() async {
     final rows = await (await db).query('bike', orderBy: 'date');
     return [
-      for (final r in rows) Pt(DateTime.parse(r['date'] as String), (r['seconds'] as int) / 60),
+      for (final r in rows) Pt(_parse(r['date'] as String), (r['seconds'] as int) / 60),
     ];
   }
 
