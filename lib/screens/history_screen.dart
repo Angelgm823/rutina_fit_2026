@@ -22,7 +22,7 @@ class History extends StatelessWidget {
                     )
                   : ListTile(
                       leading: const Icon(Icons.fitness_center),
-                      title: Text('${shortDate(r['date'] as String)} · Rutina ${r['routine']}'),
+                      title: Text('${shortDate(r['date'] as String)} · ${r['routine']}'),
                       subtitle: Text('${r['done']} de ${r['total']} series completadas'),
                       onTap: () => showSessionDetail(c, r['date'] as String, r['routine'] as String),
                     ),

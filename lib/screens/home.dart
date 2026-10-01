@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:rutina_fit/models/exercises.dart';
-import 'package:rutina_fit/screens/bike_screen.dart';
 import 'package:rutina_fit/screens/history_screen.dart';
 import 'package:rutina_fit/screens/progress_screen.dart';
-import 'package:rutina_fit/screens/workout_screen.dart';
+import 'package:rutina_fit/screens/routines.dart';
 import 'package:rutina_fit/services/service.dart';
 
 class Home extends StatefulWidget {
@@ -29,6 +27,7 @@ class _HomeState extends State<Home> {
       msg.showSnackBar(SnackBar(content: Text('No se pudo exportar: $e')));
     }
   }
+
   @override
   Widget build(BuildContext c) => Scaffold(
         appBar: AppBar(
@@ -46,30 +45,7 @@ class _HomeState extends State<Home> {
               ),
           ],
         ),
-        body: tab == 0
-            ? ListView(padding: const EdgeInsets.all(16), children: [
-                for (final k in routines.keys)
-                  Card(
-                    child: ListTile(
-                      title: Text('Rutina $k'),
-                      subtitle: Text('${routines[k]!.length} ejercicios · cuerpo completo'),
-                      trailing: const Icon(Icons.chevron_right),
-                      onTap: () => Navigator.push(c, MaterialPageRoute(builder: (_) => Workout(k))),
-                    ),
-                  ),
-                Card(
-                  child: ListTile(
-                    leading: const Icon(Icons.directions_bike),
-                    title: const Text('Bicicleta estática'),
-                    subtitle: const Text('Solo cardio · cronómetro'),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () => Navigator.push(c, MaterialPageRoute(builder: (_) => const Bike())),
-                  ),
-                ),
-              ])
-            : tab == 1
-                ? const History()
-                : const Progress(),
+        body: [const RoutinesScreen(), const History(), const Progress()][tab],
         bottomNavigationBar: NavigationBar(
           selectedIndex: tab,
           onDestinationSelected: (i) => setState(() => tab = i),

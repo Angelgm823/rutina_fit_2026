@@ -15,7 +15,6 @@ import 'package:syncfusion_flutter_charts/charts.dart'
         ChartAlignment,
         DataLabelSettings;
 import 'package:rutina_fit/database/db.dart';
-import 'package:rutina_fit/models/exercises.dart';
 import 'package:rutina_fit/theme/app_theme.dart';
 import 'package:rutina_fit/utils/format.dart';
 
@@ -28,8 +27,20 @@ class Progress extends StatefulWidget {
 }
 
 class _ProgressState extends State<Progress> {
-  final names = <String>{for (final l in routines.values) for (final e in l) e.name}.toList();
-  late String ex = names.first;
+  List<String> names = [];
+  String ex = '';
+
+  @override
+  void initState() {
+    super.initState();
+    Db.exercises().then((l) {
+      if (!mounted) return;
+      setState(() {
+        names = [for (final e in l) e.name];
+        ex = names.isEmpty ? '' : names.first;
+      });
+    });
+  }
 
   // Periodo: año + trimestre (0 = año completo). Por defecto, el trimestre actual.
   int year = DateTime.now().year;
@@ -152,6 +163,7 @@ class _ProgressState extends State<Progress> {
 
   @override
   Widget build(BuildContext c) {
+    if (names.isEmpty) return const Center(child: CircularProgressIndicator());
     final t = Theme.of(c).textTheme;
     return ListView(padding: const EdgeInsets.all(16), children: [
       Row(mainAxisAlignment: MainAxisAlignment.center, children: [

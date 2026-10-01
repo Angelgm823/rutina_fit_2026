@@ -5,7 +5,6 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'package:pdf/pdf.dart' show PdfColor, PdfPageFormat;
 import 'package:pdf/widgets.dart' as pw;
 import 'package:rutina_fit/database/db.dart';
-import 'package:rutina_fit/models/exercises.dart';
 import 'package:rutina_fit/theme/app_theme.dart';
 import 'package:rutina_fit/utils/format.dart';
 import 'package:simple_file_saver/simple_file_saver.dart';
@@ -66,7 +65,7 @@ String _compact(List<String> sets) {
 }
 
 Future<List<Entry>> buildReport() async {
-  final unit = {for (final l in routines.values) for (final e in l) e.name: e.unit};
+  final unit = await Db.units();
   final out = <Entry>[];
   for (final r in await Db.timeline()) {
     final raw = r['date'] as String;
@@ -92,7 +91,7 @@ Future<List<Entry>> buildReport() async {
         bike: false,
         when: _parse(raw),
         whenLabel: _label(raw),
-        title: 'Rutina ${r['routine']}',
+        title: '${r['routine']}',
         badge: '${r['done']} series',
         sets: (r['done'] as num).toInt(),
         rows: [for (final e in by.entries) (e.key, _compact(e.value))],

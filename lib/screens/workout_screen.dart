@@ -13,8 +13,9 @@ class SetRow {
 }
 
 class Workout extends StatefulWidget {
+  final int routineId;
   final String routine;
-  const Workout(this.routine, {super.key});
+  const Workout(this.routineId, this.routine, {super.key});
   @override
   State<Workout> createState() => _WorkoutState();
 }
@@ -27,7 +28,7 @@ class _WorkoutState extends State<Workout> {
   Timer? timer;
   bool loading = true;
 
-  List<Ex> get exs => routines[widget.routine]!;
+  List<Ex> exs = [];
 
   @override
   void initState() {
@@ -36,6 +37,7 @@ class _WorkoutState extends State<Workout> {
   }
 
   Future<void> _load() async {
+    exs = await Db.routineExercises(widget.routineId);
     final saved = await Db.day(date, widget.routine);
     for (final e in exs) {
       final mine = saved.where((x) => x['exercise'] == e.name).toList();
@@ -142,7 +144,7 @@ class _WorkoutState extends State<Workout> {
   @override
   Widget build(BuildContext c) => Scaffold(
         appBar: AppBar(
-          title: Text('Rutina ${widget.routine}'),
+          title: Text(widget.routine),
           actions: [
             Padding(
               padding: const EdgeInsets.only(right: 8),
