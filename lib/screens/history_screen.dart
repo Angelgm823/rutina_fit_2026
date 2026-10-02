@@ -17,7 +17,7 @@ class History extends StatelessWidget {
               r['type'] == 'bike'
                   ? ListTile(
                       leading: const Icon(Icons.directions_bike),
-                      title: Text('${shortDate(r['date'] as String)} · Bicicleta'),
+                      title: Text('${shortDate(r['date'] as String)} · ${r['exercise'] ?? 'Bicicleta estática'}'),
                       subtitle: Text(fmtMins(r['seconds'] as int)),
                     )
                   : ListTile(

@@ -1,102 +1,199 @@
+import 'dart:io';
+import 'dart:typed_data';
+
+import 'package:flutter/foundation.dart' show debugPrint;
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:path/path.dart' as p;
 import 'package:rutina_fit/models/exercises.dart';
 import 'package:sqflite/sqflite.dart';
 
 class Db {
-  static const _bikeSql =
-      'CREATE TABLE bike(id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT, seconds INTEGER)';
+  /// Tu base de ejercicios (tablas grupos_musculares y ejercicios), incluida en la app.
+  static const _catalogAsset = 'assets/db/ejercicios.db';
 
   static Database? _db;
 
   static Future<Database> get db async => _db ??= await openDatabase(
         p.join(await getDatabasesPath(), 'rutina.db'),
-        version: 3,
+        version: 6,
         onCreate: (d, v) async {
           await d.execute('''
             CREATE TABLE logs(
               date TEXT, routine TEXT, exercise TEXT, set_no INTEGER,
               weight REAL, reps INTEGER, done INTEGER,
               PRIMARY KEY(date, routine, exercise, set_no))''');
-          await d.execute(_bikeSql);
+          await d.execute('CREATE TABLE bike(id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT, seconds INTEGER, exercise TEXT)');
           await _createLibrary(d);
-          await _seedCatalog(d);
         },
         onUpgrade: (d, o, n) async {
-          if (o < 2) await d.execute(_bikeSql);
-          if (o < 3) {
-            await _createLibrary(d);
-            await _seedCatalog(d);
-            await _legacyRoutines(d);
-          }
+          if (o < 6) await _migrateTo6(d);
         },
+        // Cada vez que abre la app compara tu ejercicios.db con el último que importó.
+        onOpen: _syncCatalog,
       );
 
   static Future<void> _createLibrary(Database d) async {
     await d.execute('CREATE TABLE exercises(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE, '
-        'category TEXT, sub TEXT, reps TEXT, tip TEXT, unit TEXT, custom INTEGER DEFAULT 0)');
+        'category TEXT, sub TEXT, reps TEXT, tip TEXT, unit TEXT, custom INTEGER DEFAULT 0, '
+        'equipment TEXT, descr TEXT, ext_id TEXT, active INTEGER DEFAULT 1)');
     await d.execute('CREATE TABLE routines(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE)');
     await d.execute('CREATE TABLE routine_exercises(routine_id INTEGER, exercise_id INTEGER, '
         'position INTEGER, PRIMARY KEY(routine_id, exercise_id))');
+    await d.execute('CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT)');
   }
 
-  static Future<void> _seedCatalog(Database d) async {
-    final b = d.batch();
-    for (final (name, sub, reps, tip) in catalog) {
-      b.insert('exercises', {
-        'name': name,
-        'category': subcategories[sub],
-        'sub': sub,
-        'reps': reps,
-        'tip': tip,
-        'unit': reps.endsWith(' s') ? 'seg' : 'reps',
-        'custom': 0,
-      });
+  static Future<void> _ensureColumn(Database d, String table, String col, String type) async {
+    final cols = [for (final r in await d.rawQuery('PRAGMA table_info($table)')) r['name']];
+    if (!cols.contains(col)) await d.execute('ALTER TABLE $table ADD COLUMN $col $type');
+  }
+
+  /// Pasa de la base anterior (catálogo de 1,300 ejercicios en inglés) a la tuya.
+  /// Tus rutinas, sesiones guardadas y ejercicios propios se conservan.
+  static Future<void> _migrateTo6(Database d) async {
+    await _ensureColumn(d, 'exercises', 'equipment', 'TEXT');
+    await _ensureColumn(d, 'exercises', 'descr', 'TEXT');
+    await _ensureColumn(d, 'exercises', 'ext_id', 'TEXT');
+    await _ensureColumn(d, 'exercises', 'active', 'INTEGER DEFAULT 1');
+    await _ensureColumn(d, 'bike', 'exercise', 'TEXT');
+    await d.execute('CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT)');
+
+    // Borra el catálogo viejo que ninguna rutina ni sesión usa...
+    await d.execute('DELETE FROM exercises WHERE custom = 0 '
+        'AND id NOT IN (SELECT exercise_id FROM routine_exercises) '
+        'AND name NOT IN (SELECT DISTINCT exercise FROM logs)');
+    // ...y oculta del selector el que sí se usa (sigue funcionando en tus rutinas).
+    await d.execute('UPDATE exercises SET active = 0, ext_id = NULL WHERE custom = 0');
+    // Ejercicios que creaste tú: ajustar al nombre nuevo del grupo.
+    await d.execute("UPDATE exercises SET sub = CASE sub WHEN 'Brazo' THEN 'Brazos' WHEN 'Hombro' THEN 'Hombros' "
+        "WHEN 'Pierna' THEN 'Piernas y glúteos' WHEN 'Glúteo' THEN 'Piernas y glúteos' "
+        "WHEN 'Gemelos' THEN 'Piernas y glúteos' WHEN 'Abdominales' THEN 'Abdomen' ELSE sub END WHERE custom = 1");
+  }
+
+  static String _fnv(Uint8List b) {
+    var h = 0x811c9dc5;
+    for (final x in b) {
+      h ^= x;
+      h = (h * 0x01000193) & 0xffffffff;
     }
-    await b.commit(noResult: true);
+    return '${b.length}:${h.toRadixString(16)}';
   }
 
-  /// Convierte las antiguas Rutina A y B en rutinas normales y conserva su historial.
-  static Future<void> _legacyRoutines(Database d) async {
-    const a = [
-      'Sentadilla con barra', 'Press de pecho con mancuernas', 'Remo con barra', 'Peso muerto rumano',
-      'Press de hombros', 'Curl de bíceps', 'Extensión de tríceps con liga', 'Plancha',
-    ];
-    const b = [
-      'Sentadilla goblet', 'Press de pecho', 'Remo con mancuerna (por lado)', 'Peso muerto con barra',
-      'Elevaciones laterales', 'Curl martillo', 'Face pull con liga', 'Dead bug (por lado)',
-    ];
-    Future<void> make(String name, List<String> names) async {
-      final rid = await d.insert('routines', {'name': name});
-      for (var i = 0; i < names.length; i++) {
-        final r = await d.query('exercises', columns: ['id'], where: 'name=?', whereArgs: [names[i]]);
-        if (r.isNotEmpty) {
-          await d.insert('routine_exercises', {'routine_id': rid, 'exercise_id': r.first['id'], 'position': i});
+  /// Lee tu ejercicios.db y deja la tabla exercises al día:
+  /// nuevos -> se agregan; cambiados -> se actualizan (y se renombran en tu historial);
+  /// borrados de tu base -> se ocultan del selector, sin perder tus rutinas ni sesiones.
+  static Future<void> _syncCatalog(Database d) async {
+    try {
+      final data = await rootBundle.load(_catalogAsset);
+      final bytes = data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
+      final hash = _fnv(bytes);
+      final cur = await d.query('meta', where: "key = 'catalog_hash'");
+      if (cur.isNotEmpty && cur.first['value'] == hash) return; // sin cambios
+
+      final tmp = p.join(await getDatabasesPath(), 'ejercicios_import.db');
+      await File(tmp).writeAsBytes(bytes, flush: true);
+      final src = await openDatabase(tmp, readOnly: true);
+      final rows = await src.rawQuery(
+          'SELECT e.id, e.nombre, e.equipo, e.descripcion, g.nombre AS grupo '
+          'FROM ejercicios e JOIN grupos_musculares g ON g.id = e.grupo_id ORDER BY e.id');
+      await src.close();
+      await File(tmp).delete();
+
+      final timed = RegExp(r'plancha|isom[eé]tric|sost[eé]n|mant[eé]n', caseSensitive: false);
+      await d.transaction((t) async {
+        final seen = <String>[];
+        for (final r in rows) {
+          final extId = 'ej:${r['id']}';
+          final name = (r['nombre'] as String).trim();
+          final group = groupLabel(r['grupo'] as String);
+          final equipo = ((r['equipo'] as String?) ?? '').trim();
+          final secs = timed.hasMatch(name);
+          final fields = {
+            'category': categoryOf(group),
+            'sub': group,
+            'equipment': equipo,
+            'descr': ((r['descripcion'] as String?) ?? '').trim(),
+            'ext_id': extId,
+            'custom': 0,
+            'active': 1,
+          };
+          seen.add(extId);
+
+          var prev = await t.query('exercises', columns: ['id', 'name'], where: 'ext_id = ?', whereArgs: [extId]);
+          if (prev.isEmpty) prev = await t.query('exercises', columns: ['id', 'name'], where: 'name = ?', whereArgs: [name]);
+          if (prev.isEmpty) {
+            await t.insert('exercises', {
+              'name': name,
+              'reps': secs ? '20–40 s' : (equipo.toLowerCase() == 'peso corporal' ? '10–15' : '8–12'),
+              'unit': secs ? 'seg' : 'reps',
+              'tip': '',
+              ...fields,
+            });
+          } else {
+            final id = prev.first['id'];
+            final old = prev.first['name'] as String;
+            var newName = old;
+            if (old != name) {
+              final clash = await t.query('exercises', where: 'name = ? AND id <> ?', whereArgs: [name, id]);
+              if (clash.isEmpty) {
+                newName = name;
+                await t.rawUpdate('UPDATE logs SET exercise = ? WHERE exercise = ?', [name, old]);
+              }
+            }
+            await t.update('exercises', {'name': newName, ...fields}, where: 'id = ?', whereArgs: [id]);
+          }
         }
-      }
+        if (seen.isNotEmpty) {
+          await t.rawUpdate(
+              "UPDATE exercises SET active = 0 WHERE ext_id LIKE 'ej:%' AND ext_id NOT IN (${seen.map((_) => '?').join(',')})",
+              seen);
+        }
+        await t.insert('meta', {'key': 'catalog_hash', 'value': hash}, conflictAlgorithm: ConflictAlgorithm.replace);
+      });
+    } catch (e) {
+      debugPrint('No se pudo importar $_catalogAsset: $e');
     }
-
-    await make('Rutina A', a);
-    await make('Rutina B', b);
-    await d.execute("UPDATE logs SET routine = 'Rutina ' || routine WHERE routine IN ('A', 'B')");
   }
 
   // ---------- Catálogo y rutinas ----------
+  static const _exCols = ['id', 'name', 'category', 'sub', 'reps', 'tip', 'unit', 'custom', 'equipment', 'descr'];
+
+  /// Ejercicios para armar rutinas (sin cardio y sin los ocultos).
   static Future<List<Ex>> exercises() async => [
-        for (final m in await (await db).query('exercises', orderBy: 'category, sub, name')) Ex.fromMap(m),
+        for (final m in await (await db).query('exercises',
+            columns: _exCols, where: "active = 1 AND category <> 'Cardio'", orderBy: 'category, sub, name'))
+          Ex.fromMap(m),
       ];
 
-  static Future<Map<String, String>> units() async => {for (final e in await exercises()) e.name: e.unit};
+  /// Ejercicios de cardio de tu base (bicicleta, caminadora...).
+  static Future<List<Ex>> cardio() async => [
+        for (final m in await (await db).query('exercises',
+            columns: _exCols, where: "active = 1 AND category = 'Cardio'", orderBy: 'id'))
+          Ex.fromMap(m),
+      ];
+
+  /// Ejercicios con al menos una serie guardada (para la pantalla Progreso).
+  static Future<List<String>> loggedExercises() async => [
+        for (final r in await (await db).rawQuery('SELECT DISTINCT exercise FROM logs WHERE done=1 ORDER BY exercise'))
+          r['exercise'] as String,
+      ];
+
+  static Future<Map<String, String>> units() async => {
+        for (final r in await (await db).query('exercises', columns: ['name', 'unit'])) r['name'] as String: (r['unit'] as String?) ?? 'reps',
+      };
 
   /// Crea un ejercicio propio. Lanza error si el nombre ya existe.
-  static Future<int> addExercise(String name, String sub, String reps, String unit) async =>
+  static Future<int> addExercise(String name, String group, String reps, String unit) async =>
       (await db).insert('exercises', {
         'name': name,
-        'category': subcategories[sub],
-        'sub': sub,
+        'category': categoryOf(group),
+        'sub': group,
         'reps': reps,
         'tip': '',
         'unit': unit,
         'custom': 1,
+        'equipment': '',
+        'descr': '',
+        'active': 1,
       });
 
   static Future<List<Map<String, Object?>>> routines() async => (await db).rawQuery(
@@ -146,7 +243,7 @@ class Db {
 
   static Future<Map<String, Object?>?> last(String ex, String before) async {
     final r = await (await db).query('logs',
-        where: 'exercise=? AND done=1 AND date<>?',
+        where: 'exercise=? AND done=1 AND date<?',
         whereArgs: [ex, before],
         orderBy: 'date DESC, weight DESC',
         limit: 1);
@@ -166,8 +263,9 @@ class Db {
     });
   }
 
-  static Future<void> saveBike(String id, int seconds) async =>
-      (await db).insert('bike', {'date': id, 'seconds': seconds});
+  /// Guarda una sesión de cardio (bicicleta, caminadora...) con su nombre.
+  static Future<void> saveBike(String id, int seconds, String exercise) async =>
+      (await db).insert('bike', {'date': id, 'seconds': seconds, 'exercise': exercise});
 
   /// Sesión sin guardar = fecha sin hora; se ubica a las 8:00.
   static DateTime _parse(String d) => DateTime.parse(d.length <= 10 ? '$d 08:00:00' : d);
@@ -181,7 +279,7 @@ class Db {
     return [for (final r in rows) Pt(_parse(r['date'] as String), (r['w'] as num).toDouble())];
   }
 
-  /// Minutos de bicicleta por sesión.
+  /// Minutos de cardio por sesión.
   static Future<List<Pt>> bikeSeries() async {
     final rows = await (await db).query('bike', orderBy: 'date');
     return [
@@ -189,7 +287,7 @@ class Db {
     ];
   }
 
-  /// Fuerza + bicicleta juntas, más recientes primero.
+  /// Fuerza + cardio juntos, más recientes primero.
   static Future<List<Map<String, Object?>>> timeline() async {
     final gym = await history();
     final bike = await (await db).query('bike');

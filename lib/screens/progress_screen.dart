@@ -29,15 +29,17 @@ class Progress extends StatefulWidget {
 class _ProgressState extends State<Progress> {
   List<String> names = [];
   String ex = '';
+  bool loaded = false;
 
   @override
   void initState() {
     super.initState();
-    Db.exercises().then((l) {
+    Db.loggedExercises().then((l) {
       if (!mounted) return;
       setState(() {
-        names = [for (final e in l) e.name];
+        names = l;
         ex = names.isEmpty ? '' : names.first;
+        loaded = true;
       });
     });
   }
@@ -163,7 +165,10 @@ class _ProgressState extends State<Progress> {
 
   @override
   Widget build(BuildContext c) {
-    if (names.isEmpty) return const Center(child: CircularProgressIndicator());
+    if (!loaded) return const Center(child: CircularProgressIndicator());
+    if (names.isEmpty) {
+      return const Center(child: Padding(padding: EdgeInsets.all(24), child: Text('Guarda una sesión para ver tu progreso.', textAlign: TextAlign.center)));
+    }
     final t = Theme.of(c).textTheme;
     return ListView(padding: const EdgeInsets.all(16), children: [
       Row(mainAxisAlignment: MainAxisAlignment.center, children: [
@@ -201,7 +206,7 @@ class _ProgressState extends State<Progress> {
         builder: (c, s) => _block(s.data, line: true, unit: 'kg'),
       ),
       const SizedBox(height: 28),
-      Text('Bicicleta: minutos por sesión', style: t.titleMedium),
+      Text('Cardio: minutos por sesión', style: t.titleMedium),
       const SizedBox(height: 8),
       FutureBuilder<List<Pt>>(
         future: Db.bikeSeries(),

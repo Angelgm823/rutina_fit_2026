@@ -75,7 +75,7 @@ Future<List<Entry>> buildReport() async {
         bike: true,
         when: _parse(raw),
         whenLabel: _label(raw),
-        title: 'Bicicleta estática',
+        title: (r['exercise'] as String?) ?? 'Bicicleta estática',
         badge: fmtMins(secs),
         minutes: secs / 60,
       ));
@@ -109,8 +109,8 @@ List<(String, String)> _stats(List<Entry> report) {
   return [
     ('${gym.length}', 'Sesiones de fuerza'),
     ('$sets', 'Series completadas'),
-    ('${bikes.length}', 'Sesiones de bici'),
-    ('${fmt(double.parse(mins.toStringAsFixed(1)))} min', 'Minutos de bici'),
+    ('${bikes.length}', 'Sesiones de cardio'),
+    ('${fmt(double.parse(mins.toStringAsFixed(1)))} min', 'Minutos de cardio'),
   ];
 }
 

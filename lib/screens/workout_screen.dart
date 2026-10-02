@@ -5,6 +5,8 @@ import 'package:flutter/services.dart';
 import 'package:rutina_fit/database/db.dart';
 import 'package:rutina_fit/models/exercises.dart';
 import 'package:rutina_fit/utils/format.dart';
+import 'package:rutina_fit/widgets/day_picker.dart';
+import 'package:rutina_fit/widgets/exercise_info.dart';
 
 class SetRow {
   final w = TextEditingController();
@@ -21,7 +23,7 @@ class Workout extends StatefulWidget {
 }
 
 class _WorkoutState extends State<Workout> {
-  final date = DateTime.now().toIso8601String().substring(0, 10);
+  String date = dayKey(DateTime.now()); // día de la sesión; puedes cambiarlo para registrar días pasados
   final rows = <String, List<SetRow>>{};
   final hints = <String, String>{};
   int restTotal = 90, rest = 0;
@@ -58,6 +60,25 @@ class _WorkoutState extends State<Workout> {
     if (mounted) setState(() => loading = false);
   }
 
+  /// Cambia el día de la sesión y carga lo que hubiera guardado en ese día.
+  Future<void> _changeDate(String d) async {
+    if (d == date) return;
+    final old = [for (final l in rows.values) ...l];
+    setState(() {
+      date = d;
+      loading = true;
+    });
+    rows.clear();
+    hints.clear();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      for (final s in old) {
+        s.w.dispose();
+        s.r.dispose();
+      }
+    });
+    await _load();
+  }
+
   void _save(Ex e, int i) {
     final s = rows[e.name]![i];
     Db.save(date, widget.routine, e.name, i, double.tryParse(s.w.text.replaceAll(',', '.')) ?? 0,
@@ -92,7 +113,7 @@ class _WorkoutState extends State<Workout> {
           .showSnackBar(const SnackBar(content: Text('Marca al menos una serie para guardar.')));
       return;
     }
-    final id = DateTime.now().toIso8601String().substring(0, 19).replaceAll('T', ' ');
+    final id = '$date ${DateTime.now().toIso8601String().substring(11, 19)}'; // día elegido + hora actual
     await Db.finish(date, widget.routine, id);
 
     final newHints = <String, String>{};
@@ -158,7 +179,11 @@ class _WorkoutState extends State<Workout> {
         ),
         body: loading
             ? const Center(child: CircularProgressIndicator())
-            : ListView(padding: const EdgeInsets.all(12), children: [for (final e in exs) _card(e)]),
+            : ListView(padding: const EdgeInsets.all(12), children: [
+                DayPicker(selected: date, onChanged: _changeDate),
+                const SizedBox(height: 12),
+                for (final e in exs) _card(e),
+              ]),
         bottomNavigationBar: _restBar(),
       );
 
@@ -170,10 +195,18 @@ class _WorkoutState extends State<Workout> {
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(e.name, style: theme.textTheme.titleMedium),
-          Text('${e.reps} · ${e.tip}'),
-          if (hints[e.name] != null)
-            Text(hints[e.name]!, style: TextStyle(color: theme.colorScheme.primary)),
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(e.name, style: theme.textTheme.titleMedium),
+                Text([e.reps, if (e.equipment.isNotEmpty) e.equipment].join(' · ')),
+                if (hints[e.name] != null)
+                  Text(hints[e.name]!, style: TextStyle(color: theme.colorScheme.primary)),
+              ]),
+            ),
+            const SizedBox(width: 8),
+            ExerciseInfoButton(e),
+          ]),
           const SizedBox(height: 4),
           for (var i = 0; i < list.length; i++)
             Padding(

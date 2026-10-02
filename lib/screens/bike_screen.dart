@@ -1,10 +1,12 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:rutina_fit/database/db.dart';
+import 'package:rutina_fit/widgets/day_picker.dart';
 import 'package:rutina_fit/utils/format.dart';
 
 class Bike extends StatefulWidget {
-  const Bike({super.key});
+  final String name, descr;
+  const Bike({super.key, this.name = 'Bicicleta estática', this.descr = ''});
   @override
   State<Bike> createState() => _BikeState();
 }
@@ -14,6 +16,7 @@ class _BikeState extends State<Bike> {
   DateTime? startedAt;
   Timer? ticker;
   final manual = TextEditingController();
+  String date = dayKey(DateTime.now()); // puedes cambiarlo para registrar días pasados
 
   bool get running => startedAt != null;
   Duration get elapsed =>
@@ -55,12 +58,12 @@ class _BikeState extends State<Bike> {
           .showSnackBar(const SnackBar(content: Text('Inicia el cronómetro o escribe los minutos.')));
       return;
     }
-    final id = DateTime.now().toIso8601String().substring(0, 19).replaceAll('T', ' ');
-    await Db.saveBike(id, secs);
+    final id = '$date ${DateTime.now().toIso8601String().substring(11, 19)}'; // día elegido + hora actual
+    await Db.saveBike(id, secs, widget.name);
     if (!mounted) return;
     _reset();
     ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text('Bicicleta guardada: ${fmtMins(secs)}')));
+        .showSnackBar(SnackBar(content: Text('${widget.name}: ${fmtMins(secs)} guardados')));
   }
 
   @override
@@ -74,13 +77,14 @@ class _BikeState extends State<Bike> {
   Widget build(BuildContext c) {
     final theme = Theme.of(c);
     return Scaffold(
-      appBar: AppBar(title: const Text('Bicicleta estática')),
+      appBar: AppBar(title: Text(widget.name, overflow: TextOverflow.ellipsis)),
       body: ListView(padding: const EdgeInsets.all(24), children: [
+        DayPicker(selected: date, onChanged: (d) => setState(() => date = d)),
         const SizedBox(height: 24),
         Center(child: Text(clock, style: theme.textTheme.displayLarge)),
         const SizedBox(height: 8),
         Center(
-          child: Text('Resistencia baja-media · ritmo en el que puedas hablar',
+          child: Text(widget.descr.isEmpty ? 'Ritmo en el que puedas hablar sin ahogarte' : widget.descr,
               textAlign: TextAlign.center, style: theme.textTheme.bodyMedium),
         ),
         const SizedBox(height: 32),
@@ -108,7 +112,7 @@ class _BikeState extends State<Bike> {
         FilledButton.tonalIcon(
           onPressed: _save,
           icon: const Icon(Icons.save),
-          label: const Text('Guardar sesión de bici'),
+          label: const Text('Guardar sesión de cardio'),
         ),
       ]),
     );

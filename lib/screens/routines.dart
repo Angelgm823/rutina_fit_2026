@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:rutina_fit/database/db.dart';
+import 'package:rutina_fit/models/exercises.dart';
 import 'package:rutina_fit/screens/bike_screen.dart';
 import 'package:rutina_fit/screens/routine_editor_screen.dart';
 import 'package:rutina_fit/screens/workout_screen.dart';
@@ -81,14 +82,22 @@ class _RoutinesScreenState extends State<RoutinesScreen> {
           const SizedBox(height: 28),
           Text('Cardio', style: t.titleMedium),
           const SizedBox(height: 8),
-          Card(
-            child: ListTile(
-              leading: const Icon(Icons.directions_bike),
-              title: const Text('Bicicleta estática'),
-              subtitle: const Text('Solo cardio · cronómetro'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => _open(const Bike()),
-            ),
+          FutureBuilder<List<Ex>>(
+            future: Db.cardio(),
+            builder: (c, s) => Column(children: [
+              for (final e in s.data ?? <Ex>[])
+                Card(
+                  child: ListTile(
+                    leading: Icon(e.equipment.toLowerCase().contains('bicicleta')
+                        ? Icons.directions_bike
+                        : (e.equipment.toLowerCase().contains('caminadora') ? Icons.directions_walk : Icons.directions_run)),
+                    title: Text(e.name),
+                    subtitle: Text(e.equipment.isEmpty ? 'Cronómetro' : '${e.equipment} · cronómetro'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => _open(Bike(name: e.name, descr: e.descr)),
+                  ),
+                ),
+            ]),
           ),
         ]);
       },
