@@ -60,7 +60,15 @@ class _RoutinesScreenState extends State<RoutinesScreen> {
             Card(
               child: ListTile(
                 title: Text(r['name'] as String),
-                subtitle: Text('${r['n']} ejercicios'),
+                subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('${r['n']} ejercicios'),
+                  FutureBuilder<List<String>>(
+                    future: Db.routineDays(r['name'] as String),
+                    builder: (c, s) => s.hasData && s.data!.isNotEmpty
+                        ? Text(s.data!.join(' · '), style: const TextStyle(fontSize: 12))
+                        : const SizedBox.shrink(),
+                  ),
+                ]),
                 onTap: () => _open(Workout(r['id'] as int, r['name'] as String)),
                 trailing: PopupMenuButton<String>(
                   onSelected: (v) => v == 'edit'
@@ -88,9 +96,9 @@ class _RoutinesScreenState extends State<RoutinesScreen> {
               for (final e in s.data ?? <Ex>[])
                 Card(
                   child: ListTile(
-                    leading: Icon(e.equipment.toLowerCase().contains('bicicleta')
+                    leading: Icon(e.equipment.toLowerCase().contains('bicicleta') || e.name.toLowerCase().contains('bicicleta')
                         ? Icons.directions_bike
-                        : (e.equipment.toLowerCase().contains('caminadora') ? Icons.directions_walk : Icons.directions_run)),
+                        : (e.equipment.toLowerCase().contains('caminadora') || e.name.toLowerCase().contains('caminata') ? Icons.directions_walk : Icons.directions_run)),
                     title: Text(e.name),
                     subtitle: Text(e.equipment.isEmpty ? 'Cronómetro' : '${e.equipment} · cronómetro'),
                     trailing: const Icon(Icons.chevron_right),

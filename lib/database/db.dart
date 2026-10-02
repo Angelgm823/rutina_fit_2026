@@ -50,6 +50,13 @@ class Db {
   /// Pasa de la base anterior (catálogo de 1,300 ejercicios en inglés) a la tuya.
   /// Tus rutinas, sesiones guardadas y ejercicios propios se conservan.
   static Future<void> _migrateTo6(Database d) async {
+    // Bases muy antiguas pueden no tener estas tablas; créalas si faltan.
+    await d.execute('''CREATE TABLE IF NOT EXISTS exercises(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE,
+        category TEXT, sub TEXT, reps TEXT, tip TEXT, unit TEXT, custom INTEGER DEFAULT 0,
+        equipment TEXT, descr TEXT, ext_id TEXT, active INTEGER DEFAULT 1)''');
+    await d.execute('CREATE TABLE IF NOT EXISTS routines(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE)');
+    await d.execute('CREATE TABLE IF NOT EXISTS routine_exercises(routine_id INTEGER, exercise_id INTEGER, '
+        'position INTEGER, PRIMARY KEY(routine_id, exercise_id))');
     await _ensureColumn(d, 'exercises', 'equipment', 'TEXT');
     await _ensureColumn(d, 'exercises', 'descr', 'TEXT');
     await _ensureColumn(d, 'exercises', 'ext_id', 'TEXT');
@@ -176,6 +183,20 @@ class Db {
         for (final r in await (await db).rawQuery('SELECT DISTINCT exercise FROM logs WHERE done=1 ORDER BY exercise'))
           r['exercise'] as String,
       ];
+
+  /// Días de la semana (Lunes, Martes...) en que se realizó una rutina según el historial.
+  static Future<List<String>> routineDays(String routine) async {
+    const dias = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+    final rows = await (await db).rawQuery(
+        'SELECT DISTINCT date FROM logs WHERE routine=? AND done=1', [routine]);
+    final seen = <int>{};
+    for (final r in rows) {
+      final raw = r['date'] as String;
+      final d = DateTime.parse(raw.length <= 10 ? '$raw 08:00:00' : raw);
+      seen.add(d.weekday);
+    }
+    return [for (final w in (seen.toList()..sort())) dias[w - 1]];
+  }
 
   static Future<Map<String, String>> units() async => {
         for (final r in await (await db).query('exercises', columns: ['name', 'unit'])) r['name'] as String: (r['unit'] as String?) ?? 'reps',
