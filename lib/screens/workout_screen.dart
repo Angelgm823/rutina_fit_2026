@@ -30,7 +30,19 @@ class _WorkoutState extends State<Workout> {
   Timer? timer;
   bool loading = true;
 
+  // Cronómetro de la serie en curso (ejercicios por tiempo, como la plancha).
+  SetRow? clockRow;
+  DateTime? clockStart;
+  Timer? clockTicker;
+
   List<Ex> exs = [];
+
+  /// Liga: resistencia (1–3) en lugar del peso. Plancha y similares: cronómetro.
+  bool _band(Ex e) => e.kind == Kind.band;
+  bool _timed(Ex e) => e.kind == Kind.timed;
+
+  String _hint(Ex e, Map<String, Object?> l) =>
+      'Última vez: ${setText(e.kind, l['weight'] as num, l['reps'] as int, e.unit)}';
 
   @override
   void initState() {
@@ -55,7 +67,7 @@ class _WorkoutState extends State<Workout> {
       }
       rows[e.name] = list;
       final l = await Db.last(e.name, date);
-      if (l != null) hints[e.name] = 'Última vez: ${fmt(l['weight'] as num)} kg × ${l['reps']}';
+      if (l != null) hints[e.name] = _hint(e, l);
     }
     if (mounted) setState(() => loading = false);
   }
@@ -63,6 +75,7 @@ class _WorkoutState extends State<Workout> {
   /// Cambia el día de la sesión y carga lo que hubiera guardado en ese día.
   Future<void> _changeDate(String d) async {
     if (d == date) return;
+    _stopClock();
     final old = [for (final l in rows.values) ...l];
     setState(() {
       date = d;
@@ -89,6 +102,34 @@ class _WorkoutState extends State<Workout> {
     setState(() => rows[e.name]![i].done = v);
     _save(e, i);
     if (v) _startRest();
+  }
+
+  /// Inicia o detiene el cronómetro de una serie; al detenerlo guarda los segundos y la marca hecha.
+  void _clock(Ex e, int i) {
+    final s = rows[e.name]![i];
+    if (clockRow == s) {
+      _stopClock();
+      if ((int.tryParse(s.r.text) ?? 0) > 0) _toggle(e, i, true);
+      return;
+    }
+    _stopClock();
+    timer?.cancel();
+    setState(() {
+      rest = 0;
+      clockRow = s;
+      clockStart = DateTime.now();
+      s.r.text = '0';
+    });
+    clockTicker = Timer.periodic(const Duration(seconds: 1), (_) {
+      setState(() => s.r.text = '${DateTime.now().difference(clockStart!).inSeconds}');
+    });
+  }
+
+  void _stopClock() {
+    clockTicker?.cancel();
+    clockTicker = null;
+    if (clockRow != null && mounted) setState(() => clockRow = null);
+    clockRow = null;
   }
 
   void _startRest() {
@@ -119,12 +160,13 @@ class _WorkoutState extends State<Workout> {
     final newHints = <String, String>{};
     for (final e in exs) {
       final l = await Db.last(e.name, date);
-      if (l != null) newHints[e.name] = 'Última vez: ${fmt(l['weight'] as num)} kg × ${l['reps']}';
+      if (l != null) newHints[e.name] = _hint(e, l);
     }
     if (!mounted) return;
 
     final removed = <SetRow>[];
     timer?.cancel();
+    _stopClock();
     setState(() {
       for (final l in rows.values) {
         while (l.length > baseSets) {
@@ -153,6 +195,7 @@ class _WorkoutState extends State<Workout> {
   @override
   void dispose() {
     timer?.cancel();
+    clockTicker?.cancel();
     for (final l in rows.values) {
       for (final s in l) {
         s.w.dispose();
@@ -215,9 +258,19 @@ class _WorkoutState extends State<Workout> {
                 Checkbox(value: list[i].done, onChanged: (v) => _toggle(e, i, v ?? false)),
                 Text('Serie ${i + 1}'),
                 const SizedBox(width: 12),
-                Expanded(child: _field(list[i].w, 'kg', e, i)),
-                const SizedBox(width: 8),
-                Expanded(child: _field(list[i].r, e.unit, e, i)),
+                if (_timed(e)) ...[
+                  Expanded(child: _field(list[i].r, 'seg', e, i)),
+                  const SizedBox(width: 8),
+                  IconButton.filledTonal(
+                    onPressed: () => _clock(e, i),
+                    icon: Icon(clockRow == list[i] ? Icons.stop : Icons.play_arrow),
+                    tooltip: clockRow == list[i] ? 'Detener' : 'Iniciar cronómetro',
+                  ),
+                ] else ...[
+                  if (_band(e)) _level(list[i], e, i) else Expanded(child: _field(list[i].w, 'kg', e, i)),
+                  const SizedBox(width: 8),
+                  Expanded(child: _field(list[i].r, e.unit, e, i)),
+                ],
               ]),
             ),
           Align(
@@ -238,6 +291,23 @@ class _WorkoutState extends State<Workout> {
         keyboardType: const TextInputType.numberWithOptions(decimal: true),
         decoration: InputDecoration(labelText: label, isDense: true, border: const OutlineInputBorder()),
         onChanged: (_) => _save(e, i),
+      );
+
+  /// Selector de resistencia de la liga (1 = suave, 3 = fuerte); se guarda en la columna de peso.
+  Widget _level(SetRow s, Ex e, int i) => SegmentedButton<int>(
+        segments: const [
+          ButtonSegment(value: 1, label: Text('1')),
+          ButtonSegment(value: 2, label: Text('2')),
+          ButtonSegment(value: 3, label: Text('3')),
+        ],
+        selected: {if (int.tryParse(s.w.text) case final n? when n >= 1 && n <= 3) n},
+        emptySelectionAllowed: true,
+        showSelectedIcon: false,
+        style: const ButtonStyle(visualDensity: VisualDensity.compact),
+        onSelectionChanged: (v) {
+          setState(() => s.w.text = v.isEmpty ? '' : '${v.first}');
+          _save(e, i);
+        },
       );
 
   Widget _restBar() {

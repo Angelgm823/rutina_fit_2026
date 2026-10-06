@@ -14,7 +14,10 @@ class RoutinesScreen extends StatefulWidget {
 class _RoutinesScreenState extends State<RoutinesScreen> {
   late Future<List<Map<String, Object?>>> future = Db.routines();
 
-  void _reload() => setState(() => future = Db.routines());
+  // Con llaves: si el callback de setState devuelve un Future, Flutter lo rechaza y no redibuja.
+  void _reload() => setState(() {
+        future = Db.routines();
+      });
 
   Future<void> _open(Widget page) async {
     await Navigator.push(context, MaterialPageRoute(builder: (_) => page));

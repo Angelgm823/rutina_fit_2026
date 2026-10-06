@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:rutina_fit/database/db.dart';
+import 'package:rutina_fit/models/exercises.dart';
 import 'package:rutina_fit/utils/format.dart';
 
 class History extends StatelessWidget {
@@ -34,6 +35,7 @@ class History extends StatelessWidget {
 
 Future<void> showSessionDetail(BuildContext c, String d, String r) async {
   final rows = (await Db.day(d, r)).where((x) => x['done'] == 1).toList();
+  final exs = await Db.byName();
   if (!c.mounted) return;
   showModalBottomSheet(
     context: c,
@@ -42,8 +44,11 @@ Future<void> showSessionDetail(BuildContext c, String d, String r) async {
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 4),
           child: Text('${x['exercise']} · serie ${(x['set_no'] as int) + 1}: '
-              '${fmt(x['weight'] as num)} kg × ${x['reps']}'),
+              '${_set(exs[x['exercise']], x)}'),
         ),
     ]),
   );
 }
+
+String _set(Ex? e, Map<String, Object?> x) => setText(e?.kind ?? kindOf(x['exercise'] as String, '', 'reps'),
+    x['weight'] as num, x['reps'] as int, e?.unit ?? 'reps');

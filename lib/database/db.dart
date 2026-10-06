@@ -198,9 +198,15 @@ class Db {
     return [for (final w in (seen.toList()..sort())) dias[w - 1]];
   }
 
-  static Future<Map<String, String>> units() async => {
-        for (final r in await (await db).query('exercises', columns: ['name', 'unit'])) r['name'] as String: (r['unit'] as String?) ?? 'reps',
+  /// Todos los ejercicios (incluidos los ocultos) por nombre, para mostrar el historial.
+  static Future<Map<String, Ex>> byName() async => {
+        for (final m in await (await db).query('exercises', columns: _exCols)) m['name'] as String: Ex.fromMap(m),
       };
+
+  static Future<Kind> kind(String name) async {
+    final r = await (await db).query('exercises', columns: _exCols, where: 'name = ?', whereArgs: [name], limit: 1);
+    return r.isEmpty ? kindOf(name, '', 'reps') : Ex.fromMap(r.first).kind;
+  }
 
   /// Crea un ejercicio propio. Lanza error si el nombre ya existe.
   static Future<int> addExercise(String name, String group, String reps, String unit) async =>
@@ -291,11 +297,13 @@ class Db {
   /// Sesión sin guardar = fecha sin hora; se ubica a las 8:00.
   static DateTime _parse(String d) => DateTime.parse(d.length <= 10 ? '$d 08:00:00' : d);
 
-  /// Peso máximo por sesión de un ejercicio.
-  static Future<List<Pt>> weightSeries(String ex) async {
+  /// Mejor marca por sesión de un ejercicio: peso (o resistencia de liga) máximo,
+  /// o los segundos máximos si es por tiempo.
+  static Future<List<Pt>> weightSeries(String ex, {bool timed = false}) async {
+    final col = timed ? 'reps' : 'weight';
     final rows = await (await db).rawQuery(
-        'SELECT date, MAX(weight) AS w FROM logs'
-        ' WHERE exercise=? AND done=1 AND weight>0 GROUP BY date ORDER BY date',
+        'SELECT date, MAX($col) AS w FROM logs'
+        ' WHERE exercise=? AND done=1 AND $col>0 GROUP BY date ORDER BY date',
         [ex]);
     return [for (final r in rows) Pt(_parse(r['date'] as String), (r['w'] as num).toDouble())];
   }

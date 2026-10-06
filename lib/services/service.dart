@@ -5,6 +5,7 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'package:pdf/pdf.dart' show PdfColor, PdfPageFormat;
 import 'package:pdf/widgets.dart' as pw;
 import 'package:rutina_fit/database/db.dart';
+import 'package:rutina_fit/models/exercises.dart' show kindOf, setText;
 import 'package:rutina_fit/theme/app_theme.dart';
 import 'package:rutina_fit/utils/format.dart';
 import 'package:simple_file_saver/simple_file_saver.dart';
@@ -65,7 +66,7 @@ String _compact(List<String> sets) {
 }
 
 Future<List<Entry>> buildReport() async {
-  final unit = await Db.units();
+  final exs = await Db.byName();
   final out = <Entry>[];
   for (final r in await Db.timeline()) {
     final raw = r['date'] as String;
@@ -85,7 +86,9 @@ Future<List<Entry>> buildReport() async {
       for (final x in sets) {
         final name = x['exercise'] as String;
         final w = (x['weight'] as num).toDouble();
-        by.putIfAbsent(name, () => []).add(w == 0 ? '${x['reps']} ${unit[name] ?? 'reps'}' : '${fmt(w)} kg × ${x['reps']}');
+        final e = exs[name];
+        by.putIfAbsent(name, () => []).add(
+            setText(e?.kind ?? kindOf(name, '', 'reps'), w, x['reps'] as int, e?.unit ?? 'reps'));
       }
       out.add(Entry(
         bike: false,

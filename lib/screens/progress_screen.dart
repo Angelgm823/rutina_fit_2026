@@ -15,6 +15,7 @@ import 'package:syncfusion_flutter_charts/charts.dart'
         ChartAlignment,
         DataLabelSettings;
 import 'package:rutina_fit/database/db.dart';
+import 'package:rutina_fit/models/exercises.dart';
 import 'package:rutina_fit/theme/app_theme.dart';
 import 'package:rutina_fit/utils/format.dart';
 
@@ -29,7 +30,24 @@ class Progress extends StatefulWidget {
 class _ProgressState extends State<Progress> {
   List<String> names = [];
   String ex = '';
+  Kind kind = Kind.weight;
   bool loaded = false;
+
+  /// Unidad y nombre de la marca según el tipo de ejercicio.
+  (String unit, String best) get _measure => switch (kind) {
+        Kind.weight => ('kg', 'Mejor peso'),
+        Kind.band => ('nivel', 'Mejor resistencia'),
+        Kind.timed => ('s', 'Mejor tiempo'),
+      };
+
+  Future<void> _select(String name) async {
+    final k = await Db.kind(name);
+    if (!mounted) return;
+    setState(() {
+      ex = name;
+      kind = k;
+    });
+  }
 
   @override
   void initState() {
@@ -38,9 +56,9 @@ class _ProgressState extends State<Progress> {
       if (!mounted) return;
       setState(() {
         names = l;
-        ex = names.isEmpty ? '' : names.first;
         loaded = true;
       });
+      if (l.isNotEmpty) _select(l.first);
     });
   }
 
@@ -94,9 +112,10 @@ class _ProgressState extends State<Progress> {
     if (line) {
       final best = d.map((pt) => pt.y).reduce((a, b) => a > b ? a : b);
       final change = d.last.y - d.first.y;
+      final (u, caption) = _measure;
       stats = [
-        _stat('${_n1(best)} kg', 'Mejor peso'),
-        _stat('${change >= 0 ? '+' : ''}${_n1(change)} kg', 'Cambio'),
+        _stat('${_n1(best)} $u', caption),
+        _stat('${change >= 0 ? '+' : ''}${_n1(change)} $u', 'Cambio'),
         _stat('${d.length}', 'Sesiones'),
       ];
     } else {
@@ -128,7 +147,8 @@ class _ProgressState extends State<Progress> {
           ),
           primaryYAxis: NumericAxis(
             minimum: 0,
-            maximum: (top * 1.25).ceilToDouble(),
+            maximum: line && kind == Kind.band ? 3.5 : (top * 1.25).ceilToDouble(),
+            interval: line && kind == Kind.band ? 1 : null,
             labelStyle: axisText,
             title: AxisTitle(text: unit, textStyle: axisText),
             axisLine: const AxisLine(width: 0),
@@ -192,18 +212,23 @@ class _ProgressState extends State<Progress> {
         onSelectionChanged: (v) => setState(() => quarter = v.first),
       ),
       const SizedBox(height: 20),
-      Text('Peso máximo por sesión', style: t.titleMedium),
+      Text(switch (kind) {
+        Kind.weight => 'Peso máximo por sesión',
+        Kind.band => 'Resistencia de liga por sesión (1–3)',
+        Kind.timed => 'Tiempo máximo por sesión',
+      }, style: t.titleMedium),
       DropdownButton<String>(
         isExpanded: true,
-        value: ex,
+        value: ex.isEmpty ? null : ex,
         dropdownColor: cNight,
         items: [for (final n in names) DropdownMenuItem(value: n, child: Text(n))],
-        onChanged: (v) => setState(() => ex = v ?? ex),
+        onChanged: (v) => v == null ? null : _select(v),
       ),
       const SizedBox(height: 8),
       FutureBuilder<List<Pt>>(
-        future: Db.weightSeries(ex),
-        builder: (c, s) => _block(s.data, line: true, unit: 'kg'),
+        key: ValueKey(ex),
+        future: Db.weightSeries(ex, timed: kind == Kind.timed),
+        builder: (c, s) => _block(s.data, line: true, unit: _measure.$1),
       ),
       const SizedBox(height: 28),
       Text('Cardio: minutos por sesión', style: t.titleMedium),
