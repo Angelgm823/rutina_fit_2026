@@ -35,10 +35,10 @@ class _ProgressState extends State<Progress> {
 
   /// Unidad y nombre de la marca según el tipo de ejercicio.
   (String unit, String best) get _measure => switch (kind) {
-        Kind.weight => ('kg', 'Mejor peso'),
-        Kind.band => ('nivel', 'Mejor resistencia'),
-        Kind.timed => ('s', 'Mejor tiempo'),
-      };
+    Kind.weight => ('kg', 'Mejor peso'),
+    Kind.band => ('nivel', 'Mejor resistencia'),
+    Kind.timed => ('s', 'Mejor tiempo'),
+  };
 
   Future<void> _select(String name) async {
     final k = await Db.kind(name);
@@ -46,20 +46,33 @@ class _ProgressState extends State<Progress> {
     setState(() {
       ex = name;
       kind = k;
+      series = Db.weightSeries(name, timed: k == Kind.timed);
     });
   }
+
+  Future<List<Pt>>? series; // marca del ejercicio elegido
+  Future<List<Pt>> bike = Db.bikeSeries();
+  bool hasBike = false;
 
   @override
   void initState() {
     super.initState();
-    Db.loggedExercises().then((l) {
-      if (!mounted) return;
-      setState(() {
-        names = l;
-        loaded = true;
-      });
-      if (l.isNotEmpty) _select(l.first);
+    _load();
+  }
+
+  /// Carga (o recarga al arrastrar hacia abajo) ejercicios y gráficas; conserva el ejercicio elegido.
+  Future<void> _load() async {
+    final l = await Db.loggedExercises();
+    final b = Db.bikeSeries();
+    final nBike = (await b).length;
+    if (!mounted) return;
+    setState(() {
+      names = l;
+      bike = b;
+      hasBike = nBike > 0;
+      loaded = true;
     });
+    if (l.isNotEmpty) await _select(l.contains(ex) ? ex : l.first);
   }
 
   // Periodo: año + trimestre (0 = año completo). Por defecto, el trimestre actual.
@@ -79,26 +92,23 @@ class _ProgressState extends State<Progress> {
     for (final pt in d) {
       count[base(pt)] = (count[base(pt)] ?? 0) + 1;
     }
-    return [
-      for (final pt in d)
-        count[base(pt)]! > 1 ? '${base(pt)} ${two(pt.x.hour)}:${two(pt.x.minute)}' : base(pt),
-    ];
+    return [for (final pt in d) count[base(pt)]! > 1 ? '${base(pt)} ${two(pt.x.hour)}:${two(pt.x.minute)}' : base(pt)];
   }
 
   Widget _stat(String value, String caption) => Expanded(
-        child: Column(children: [
-          Text(value, style: Theme.of(context).textTheme.titleMedium),
-          Text(caption, style: const TextStyle(color: cSlate, fontSize: 12)),
-        ]),
-      );
+    child: Column(
+      children: [
+        Text(value, style: Theme.of(context).textTheme.titleMedium),
+        Text(caption, style: const TextStyle(color: cSlate, fontSize: 12)),
+      ],
+    ),
+  );
 
   Widget _block(List<Pt>? all, {required bool line, required String unit}) {
     if (all == null) {
       return const SizedBox(height: 240, child: Center(child: CircularProgressIndicator()));
     }
-    final d = all
-        .where((pt) => pt.x.year == year && (quarter == 0 || (pt.x.month - 1) ~/ 3 + 1 == quarter))
-        .toList();
+    final d = all.where((pt) => pt.x.year == year && (quarter == 0 || (pt.x.month - 1) ~/ 3 + 1 == quarter)).toList();
     if (d.isEmpty) {
       return SizedBox(height: 200, child: Center(child: Text('Sin datos en $period.')));
     }
@@ -127,116 +137,143 @@ class _ProgressState extends State<Progress> {
       ];
     }
 
-    return Column(children: [
-      Row(children: stats),
-      SizedBox(
-        height: 250,
-        child: SfCartesianChart(
-          plotAreaBorderWidth: 0,
-          title: ChartTitle(
-            text: shown.length < d.length ? '$period · últimas $_maxSessions sesiones' : period,
-            textStyle: axisText,
-            alignment: ChartAlignment.near,
+    return Column(
+      children: [
+        Row(children: stats),
+        SizedBox(
+          height: 250,
+          child: SfCartesianChart(
+            plotAreaBorderWidth: 0,
+            title: ChartTitle(
+              text: shown.length < d.length ? '$period · últimas $_maxSessions sesiones' : period,
+              textStyle: axisText,
+              alignment: ChartAlignment.near,
+            ),
+            tooltipBehavior: TooltipBehavior(enable: true),
+            primaryXAxis: CategoryAxis(
+              labelStyle: axisText,
+              labelRotation: shown.length > 5 ? -45 : 0,
+              axisLine: const AxisLine(color: cSteel),
+              majorGridLines: const MajorGridLines(width: 0),
+            ),
+            primaryYAxis: NumericAxis(
+              minimum: 0,
+              maximum: line && kind == Kind.band ? 3.5 : (top * 1.25).ceilToDouble(),
+              interval: line && kind == Kind.band ? 1 : null,
+              labelStyle: axisText,
+              title: AxisTitle(text: unit, textStyle: axisText),
+              axisLine: const AxisLine(width: 0),
+              majorGridLines: const MajorGridLines(color: cSteel, width: 0.5),
+            ),
+            series: [
+              if (line)
+                LineSeries<Pt, String>(
+                  dataSource: shown,
+                  xValueMapper: (pt, i) => labels[i],
+                  yValueMapper: (pt, _) => pt.y,
+                  dataLabelMapper: (pt, _) => fmt(pt.y),
+                  dataLabelSettings: const DataLabelSettings(
+                    isVisible: true,
+                    textStyle: TextStyle(color: cMist, fontSize: 11),
+                  ),
+                  color: cMist,
+                  width: 3,
+                  markerSettings: const MarkerSettings(isVisible: true, height: 8, width: 8, color: cMist),
+                )
+              else
+                ColumnSeries<Pt, String>(
+                  dataSource: shown,
+                  xValueMapper: (pt, i) => labels[i],
+                  yValueMapper: (pt, _) => pt.y,
+                  dataLabelMapper: (pt, _) => _n1(pt.y),
+                  dataLabelSettings: const DataLabelSettings(
+                    isVisible: true,
+                    textStyle: TextStyle(color: cMist, fontSize: 11),
+                  ),
+                  color: cSlate,
+                  width: 0.4,
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
+                ),
+            ],
           ),
-          tooltipBehavior: TooltipBehavior(enable: true),
-          primaryXAxis: CategoryAxis(
-            labelStyle: axisText,
-            labelRotation: shown.length > 5 ? -45 : 0,
-            axisLine: const AxisLine(color: cSteel),
-            majorGridLines: const MajorGridLines(width: 0),
-          ),
-          primaryYAxis: NumericAxis(
-            minimum: 0,
-            maximum: line && kind == Kind.band ? 3.5 : (top * 1.25).ceilToDouble(),
-            interval: line && kind == Kind.band ? 1 : null,
-            labelStyle: axisText,
-            title: AxisTitle(text: unit, textStyle: axisText),
-            axisLine: const AxisLine(width: 0),
-            majorGridLines: const MajorGridLines(color: cSteel, width: 0.5),
-          ),
-          series: [
-            if (line)
-              LineSeries<Pt, String>(
-                dataSource: shown,
-                xValueMapper: (pt, i) => labels[i],
-                yValueMapper: (pt, _) => pt.y,
-                dataLabelMapper: (pt, _) => fmt(pt.y),
-                dataLabelSettings: const DataLabelSettings(isVisible: true, textStyle: TextStyle(color: cMist, fontSize: 11)),
-                color: cMist,
-                width: 3,
-                markerSettings: const MarkerSettings(isVisible: true, height: 8, width: 8, color: cMist),
-              )
-            else
-              ColumnSeries<Pt, String>(
-                dataSource: shown,
-                xValueMapper: (pt, i) => labels[i],
-                yValueMapper: (pt, _) => pt.y,
-                dataLabelMapper: (pt, _) => _n1(pt.y),
-                dataLabelSettings: const DataLabelSettings(isVisible: true, textStyle: TextStyle(color: cMist, fontSize: 11)),
-                color: cSlate,
-                width: 0.4,
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
-              ),
-          ],
         ),
-      ),
-    ]);
+      ],
+    );
   }
 
   @override
   Widget build(BuildContext c) {
     if (!loaded) return const Center(child: CircularProgressIndicator());
-    if (names.isEmpty) {
-      return const Center(child: Padding(padding: EdgeInsets.all(24), child: Text('Guarda una sesión para ver tu progreso.', textAlign: TextAlign.center)));
-    }
     final t = Theme.of(c).textTheme;
-    return ListView(padding: const EdgeInsets.all(16), children: [
-      Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-        IconButton(onPressed: () => setState(() => year--), icon: const Icon(Icons.chevron_left)),
-        Text('$year', style: t.titleLarge),
-        IconButton(
-          onPressed: year >= DateTime.now().year ? null : () => setState(() => year++),
-          icon: const Icon(Icons.chevron_right),
+    if (names.isEmpty && !hasBike) {
+      return RefreshIndicator(
+        onRefresh: _load,
+        child: ListView(
+          padding: const EdgeInsets.all(24),
+          children: const [
+            SizedBox(height: 120),
+            Text('Guarda una sesión para ver tu progreso.', textAlign: TextAlign.center),
+          ],
         ),
-      ]),
-      SegmentedButton<int>(
-        showSelectedIcon: false,
-        segments: const [
-          ButtonSegment(value: 0, label: Text('Año')),
-          ButtonSegment(value: 1, label: Text('T1')),
-          ButtonSegment(value: 2, label: Text('T2')),
-          ButtonSegment(value: 3, label: Text('T3')),
-          ButtonSegment(value: 4, label: Text('T4')),
+      );
+    }
+    return RefreshIndicator(
+      onRefresh: _load,
+      child: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              IconButton(onPressed: () => setState(() => year--), icon: const Icon(Icons.chevron_left)),
+              Text('$year', style: t.titleLarge),
+              IconButton(
+                onPressed: year >= DateTime.now().year ? null : () => setState(() => year++),
+                icon: const Icon(Icons.chevron_right),
+              ),
+            ],
+          ),
+          SegmentedButton<int>(
+            showSelectedIcon: false,
+            segments: const [
+              ButtonSegment(value: 0, label: Text('Año')),
+              ButtonSegment(value: 1, label: Text('T1')),
+              ButtonSegment(value: 2, label: Text('T2')),
+              ButtonSegment(value: 3, label: Text('T3')),
+              ButtonSegment(value: 4, label: Text('T4')),
+            ],
+            selected: {quarter},
+            onSelectionChanged: (v) => setState(() => quarter = v.first),
+          ),
+          if (names.isNotEmpty) ...[
+            const SizedBox(height: 20),
+            Text(switch (kind) {
+              Kind.weight => 'Peso máximo por sesión',
+              Kind.band => 'Resistencia de liga por sesión (1–3)',
+              Kind.timed => 'Tiempo máximo por sesión',
+            }, style: t.titleMedium),
+            DropdownButton<String>(
+              isExpanded: true,
+              value: ex.isEmpty ? null : ex,
+              dropdownColor: cNight,
+              items: [for (final n in names) DropdownMenuItem(value: n, child: Text(n))],
+              onChanged: (v) => v == null ? null : _select(v),
+            ),
+            const SizedBox(height: 8),
+            FutureBuilder<List<Pt>>(
+              future: series,
+              builder: (c, s) => _block(s.data, line: true, unit: _measure.$1),
+            ),
+          ],
+          const SizedBox(height: 28),
+          Text('Cardio: minutos por sesión', style: t.titleMedium),
+          const SizedBox(height: 8),
+          FutureBuilder<List<Pt>>(
+            future: bike,
+            builder: (c, s) => _block(s.data, line: false, unit: 'min'),
+          ),
         ],
-        selected: {quarter},
-        onSelectionChanged: (v) => setState(() => quarter = v.first),
       ),
-      const SizedBox(height: 20),
-      Text(switch (kind) {
-        Kind.weight => 'Peso máximo por sesión',
-        Kind.band => 'Resistencia de liga por sesión (1–3)',
-        Kind.timed => 'Tiempo máximo por sesión',
-      }, style: t.titleMedium),
-      DropdownButton<String>(
-        isExpanded: true,
-        value: ex.isEmpty ? null : ex,
-        dropdownColor: cNight,
-        items: [for (final n in names) DropdownMenuItem(value: n, child: Text(n))],
-        onChanged: (v) => v == null ? null : _select(v),
-      ),
-      const SizedBox(height: 8),
-      FutureBuilder<List<Pt>>(
-        key: ValueKey(ex),
-        future: Db.weightSeries(ex, timed: kind == Kind.timed),
-        builder: (c, s) => _block(s.data, line: true, unit: _measure.$1),
-      ),
-      const SizedBox(height: 28),
-      Text('Cardio: minutos por sesión', style: t.titleMedium),
-      const SizedBox(height: 8),
-      FutureBuilder<List<Pt>>(
-        future: Db.bikeSeries(),
-        builder: (c, s) => _block(s.data, line: false, unit: 'min'),
-      ),
-    ]);
+    );
   }
 }
