@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:rutina_fit/database/db.dart';
@@ -10,6 +12,8 @@ void main() {
 
   testWidgets('progreso muestra cardio aunque no haya sesiones de fuerza, y recarga al arrastrar', (t) async {
     await t.runAsync(() async {
+      // Carpeta propia: las pruebas corren en paralelo y no deben compartir rutina.db.
+      await databaseFactory.setDatabasesPath(Directory('.dart_tool/test_db/progress').absolute.path);
       await databaseFactory.deleteDatabase('${await getDatabasesPath()}/rutina.db');
     });
     await t.pumpWidget(const MaterialApp(home: Scaffold(body: Progress())));
