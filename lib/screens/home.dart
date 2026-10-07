@@ -12,6 +12,7 @@ class Home extends StatefulWidget {
 
 class _HomeState extends State<Home> {
   int tab = 0;
+  int _gen = 0; // cambia tras importar un respaldo para recargar las pantallas
 
   Future<void> _export(String kind) async {
     final msg = ScaffoldMessenger.of(context);
@@ -25,6 +26,25 @@ class _HomeState extends State<Home> {
       msg.showSnackBar(SnackBar(content: Text('Guardado en Descargas: $name')));
     } catch (e) {
       msg.showSnackBar(SnackBar(content: Text('No se pudo exportar: $e')));
+    }
+  }
+
+  Future<void> _backup(String action) async {
+    final msg = ScaffoldMessenger.of(context);
+    try {
+      if (action == 'export') {
+        final name = await exportBackup();
+        msg.showSnackBar(SnackBar(content: Text('Respaldo guardado en Descargas: $name')));
+        return;
+      }
+      final res = await importBackup();
+      if (res == null) return;
+      final (gym, bike, routines) = res;
+      setState(() => _gen++);
+      msg.showSnackBar(SnackBar(
+          content: Text('Respaldo importado: $gym sesiones de fuerza, $bike de cardio y $routines rutinas.')));
+    } catch (e) {
+      msg.showSnackBar(SnackBar(content: Text(e is FormatException ? e.message : 'Error con el respaldo: $e')));
     }
   }
 
@@ -43,9 +63,26 @@ class _HomeState extends State<Home> {
                   PopupMenuItem(value: 'img', child: Text('Descargar imagen')),
                 ],
               ),
+            PopupMenuButton<String>(
+              tooltip: 'Respaldo',
+              onSelected: _backup,
+              itemBuilder: (_) => const [
+                PopupMenuItem(
+                  value: 'export',
+                  child: ListTile(leading: Icon(Icons.save_alt), title: Text('Exportar respaldo')),
+                ),
+                PopupMenuItem(
+                  value: 'import',
+                  child: ListTile(leading: Icon(Icons.restore), title: Text('Importar respaldo')),
+                ),
+              ],
+            ),
           ],
         ),
-        body: [const RoutinesScreen(), const History(), const Progress()][tab],
+        body: KeyedSubtree(
+          key: ValueKey(_gen),
+          child: [const RoutinesScreen(), const History(), const Progress()][tab],
+        ),
         bottomNavigationBar: NavigationBar(
           selectedIndex: tab,
           onDestinationSelected: (i) => setState(() => tab = i),

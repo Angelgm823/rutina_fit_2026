@@ -327,6 +327,83 @@ class Db {
     all.sort((a, b) => (b['date'] as String).compareTo(a['date'] as String));
     return all;
   }
+
+  // ---------- Respaldo (cambiar de dispositivo) ----------
+  static const backupVersion = 1;
+
+  /// Todo lo tuyo: sesiones, cardio, rutinas y ejercicios propios.
+  /// Las rutinas guardan nombres de ejercicio (no ids) porque los ids cambian entre teléfonos.
+  static Future<Map<String, Object?>> exportData() async {
+    final d = await db;
+    final routines = <Map<String, Object?>>[];
+    for (final r in await d.query('routines', orderBy: 'id')) {
+      final exs = await d.rawQuery(
+          'SELECT e.name FROM routine_exercises re JOIN exercises e ON e.id = re.exercise_id '
+          'WHERE re.routine_id = ? ORDER BY re.position',
+          [r['id']]);
+      routines.add({'name': r['name'], 'exercises': [for (final e in exs) e['name']]});
+    }
+    return {
+      'app': 'rutina_fit',
+      'version': backupVersion,
+      'created': DateTime.now().toIso8601String(),
+      'custom_exercises': await d.query('exercises',
+          columns: ['name', 'category', 'sub', 'reps', 'tip', 'unit', 'equipment', 'descr'], where: 'custom = 1'),
+      'routines': routines,
+      'logs': await d.query('logs'),
+      'bike': await d.query('bike', columns: ['date', 'seconds', 'exercise']),
+    };
+  }
+
+  /// Une el respaldo con lo que ya hay (no borra nada). Importar el mismo archivo dos veces no duplica.
+  /// Devuelve (sesiones de fuerza, sesiones de cardio, rutinas) importadas.
+  static Future<(int, int, int)> importData(Map<String, dynamic> data) async {
+    if (data['app'] != 'rutina_fit') throw const FormatException('El archivo no es un respaldo de Rutina Fit.');
+    if ((data['version'] as num? ?? 0) > backupVersion) {
+      throw const FormatException('El respaldo es de una versión más nueva de la app. Actualiza la app.');
+    }
+    final d = await db;
+    final sessions = <String>{};
+    var bikes = 0, routines = 0;
+    await d.transaction((t) async {
+      for (final e in (data['custom_exercises'] as List? ?? const [])) {
+        await t.insert('exercises', {...Map<String, Object?>.from(e as Map), 'custom': 1, 'active': 1},
+            conflictAlgorithm: ConflictAlgorithm.ignore);
+      }
+
+      for (final r in (data['routines'] as List? ?? const [])) {
+        final name = r['name'] as String;
+        final ids = <int>[];
+        for (final ex in (r['exercises'] as List)) {
+          final row = await t.query('exercises', columns: ['id'], where: 'name = ?', whereArgs: [ex], limit: 1);
+          if (row.isNotEmpty && !ids.contains(row.first['id'])) ids.add(row.first['id'] as int);
+        }
+        final prev = await t.query('routines', columns: ['id'], where: 'name = ?', whereArgs: [name]);
+        final rid = prev.isEmpty ? await t.insert('routines', {'name': name}) : prev.first['id'] as int;
+        await t.delete('routine_exercises', where: 'routine_id = ?', whereArgs: [rid]);
+        for (var i = 0; i < ids.length; i++) {
+          await t.insert('routine_exercises', {'routine_id': rid, 'exercise_id': ids[i], 'position': i});
+        }
+        routines++;
+      }
+
+      for (final l in (data['logs'] as List? ?? const [])) {
+        final m = Map<String, Object?>.from(l as Map);
+        await t.insert('logs', m, conflictAlgorithm: ConflictAlgorithm.replace);
+        sessions.add('${m['date']}|${m['routine']}');
+      }
+
+      for (final b in (data['bike'] as List? ?? const [])) {
+        final dup = await t.query('bike',
+            where: 'date = ? AND seconds = ? AND exercise IS ?', whereArgs: [b['date'], b['seconds'], b['exercise']]);
+        if (dup.isEmpty) {
+          await t.insert('bike', {'date': b['date'], 'seconds': b['seconds'], 'exercise': b['exercise']});
+          bikes++;
+        }
+      }
+    });
+    return (sessions.length, bikes, routines);
+  }
 }
 
 

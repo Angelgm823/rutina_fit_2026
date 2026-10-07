@@ -40,6 +40,7 @@ dependencies:
   pdf: ^3.13.1
   syncfusion_flutter_charts: 34.2.9
   simple_file_saver: 2.0.1
+  file_picker: ^13.1.0
 
 
 dev_dependencies:

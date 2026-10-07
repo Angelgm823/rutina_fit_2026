@@ -1,5 +1,8 @@
+import 'dart:convert';
 import 'dart:math' show max;
 import 'dart:ui' as ui;
+import 'dart:typed_data' show Uint8List;
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:pdf/pdf.dart' show PdfColor, PdfPageFormat;
@@ -347,4 +350,28 @@ Future<String> exportImage(List<Entry> report) async {
     fileInfo: FileSaveInfo.fromBytes(bytes: data!.buffer.asUint8List(), basename: name, extension: 'png'),
   );
   return '$name.png';
+}
+// ---------- Respaldo ----------
+/// Guarda en Descargas un archivo .json con todos tus datos, para pasarlo al teléfono nuevo.
+Future<String> exportBackup() async {
+  final name = 'rutina_fit_respaldo_${_stamp()}';
+  final bytes = utf8.encode(const JsonEncoder.withIndent(' ').convert(await Db.exportData()));
+  await SimpleFileSaver.saveFile(
+    fileInfo: FileSaveInfo.fromBytes(bytes: Uint8List.fromList(bytes), basename: name, extension: 'json'),
+  );
+  return '$name.json';
+}
+
+/// Abre el selector de archivos y une el respaldo elegido. null = el usuario canceló.
+Future<(int, int, int)?> importBackup() async {
+  final file = await FilePicker.pickFile(dialogTitle: 'Elige tu respaldo de Rutina Fit');
+  if (file == null) return null;
+  final Object? data;
+  try {
+    data = jsonDecode(utf8.decode(await file.readAsBytes()));
+  } on FormatException {
+    throw const FormatException('El archivo no es un respaldo válido (.json).');
+  }
+  if (data is! Map<String, dynamic>) throw const FormatException('El archivo no es un respaldo válido.');
+  return Db.importData(data);
 }
