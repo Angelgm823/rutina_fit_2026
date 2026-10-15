@@ -11,7 +11,12 @@ import 'package:rutina_fit/database/db.dart';
 import 'package:rutina_fit/models/exercises.dart' show kindOf, setText;
 import 'package:rutina_fit/theme/app_theme.dart';
 import 'package:rutina_fit/utils/format.dart';
-import 'package:simple_file_saver/simple_file_saver.dart';
+
+/// Abre el diálogo para guardar. Devuelve el nombre del archivo, o null si el usuario canceló.
+Future<String?> _save(String fileName, Uint8List bytes, String mimeType) async {
+  final uri = await FilePicker.saveFile(fileName: fileName, bytes: bytes, mimeType: mimeType);
+  return uri == null ? null : fileName;
+}
 
 // ---------- Datos del reporte ----------
 class Entry {
@@ -132,7 +137,7 @@ List<(String, List<Entry>)> _groups(List<Entry> report) {
 }
 
 // ---------- PDF ----------
-Future<String> exportPdf(List<Entry> report) async {
+Future<String?> exportPdf(List<Entry> report) async {
   final ink = PdfColor.fromHex('#111827');
   final night = PdfColor.fromHex('#1F2937');
   final steel = PdfColor.fromHex('#4B5563');
@@ -223,11 +228,7 @@ Future<String> exportPdf(List<Entry> report) async {
     ],
   ));
 
-  final name = 'historial_${_stamp()}';
-  await SimpleFileSaver.saveFile(
-    fileInfo: FileSaveInfo.fromBytes(bytes: await doc.save(), basename: name, extension: 'pdf'),
-  );
-  return '$name.pdf';
+  return _save('historial_${_stamp()}.pdf', await doc.save(), 'application/pdf');
 }
 
 // ---------- Imagen ----------
@@ -290,7 +291,7 @@ _Block _cardBlock(Entry e, double w) {
   });
 }
 
-Future<String> exportImage(List<Entry> report) async {
+Future<String?> exportImage(List<Entry> report) async {
   const w = 1080.0, m = 48.0, cw = w - 2 * m, maxH = 7500.0;
   final blocks = <(_Block, double)>[]; // (bloque, espacio antes)
 
@@ -345,21 +346,13 @@ Future<String> exportImage(List<Entry> report) async {
   final img = await rec.endRecording().toImage(w.toInt(), h.ceil());
   final data = await img.toByteData(format: ui.ImageByteFormat.png);
 
-  final name = 'historial_${_stamp()}';
-  await SimpleFileSaver.saveFile(
-    fileInfo: FileSaveInfo.fromBytes(bytes: data!.buffer.asUint8List(), basename: name, extension: 'png'),
-  );
-  return '$name.png';
+  return _save('historial_${_stamp()}.png', data!.buffer.asUint8List(), 'image/png');
 }
 // ---------- Respaldo ----------
-/// Guarda en Descargas un archivo .json con todos tus datos, para pasarlo al teléfono nuevo.
-Future<String> exportBackup() async {
-  final name = 'rutina_fit_respaldo_${_stamp()}';
+/// Guarda un archivo .json con todos tus datos, para pasarlo al teléfono nuevo. null = el usuario canceló.
+Future<String?> exportBackup() async {
   final bytes = utf8.encode(const JsonEncoder.withIndent(' ').convert(await Db.exportData()));
-  await SimpleFileSaver.saveFile(
-    fileInfo: FileSaveInfo.fromBytes(bytes: Uint8List.fromList(bytes), basename: name, extension: 'json'),
-  );
-  return '$name.json';
+  return _save('rutina_fit_respaldo_${_stamp()}.json', Uint8List.fromList(bytes), 'application/json');
 }
 
 /// Abre el selector de archivos y une el respaldo elegido. null = el usuario canceló.

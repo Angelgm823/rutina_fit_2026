@@ -87,7 +87,7 @@ class _DayPickerState extends State<DayPicker> {
         Row(children: [
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Text('Fecha de la sesión', style: TextStyle(color: cSlate, fontSize: 12)),
+              Text('Fecha de la sesión', style: TextStyle(color: cSlate, fontSize: 12)),
               const SizedBox(height: 2),
               Text(_title(_sel),
                   style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
@@ -123,11 +123,11 @@ class _DayPickerState extends State<DayPicker> {
     final key = dayKey(d);
     final selected = key == widget.selected;
     final isToday = d == today;
-    final fg = selected ? cInk : cMist;
+    final fg = selected ? cOnAccent : cMist;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 2),
       child: Material(
-        color: selected ? cMist : Colors.transparent,
+        color: selected ? cAccent : Colors.transparent,
         borderRadius: BorderRadius.circular(12),
         child: InkWell(
           borderRadius: BorderRadius.circular(12),
@@ -136,7 +136,7 @@ class _DayPickerState extends State<DayPicker> {
             height: 60,
             child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
               Text(_dias[d.weekday - 1].toUpperCase(),
-                  style: TextStyle(fontSize: 10, letterSpacing: 0.5, color: selected ? cInk : cSlate)),
+                  style: TextStyle(fontSize: 10, letterSpacing: 0.5, color: selected ? cOnAccent : cSlate)),
               const SizedBox(height: 2),
               Text('${d.day}', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: fg)),
               const SizedBox(height: 3),
@@ -145,7 +145,7 @@ class _DayPickerState extends State<DayPicker> {
                 height: 4,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: isToday ? (selected ? cInk : cMist) : Colors.transparent,
+                  color: isToday ? (selected ? cOnAccent : cMist) : Colors.transparent,
                 ),
               ),
             ]),

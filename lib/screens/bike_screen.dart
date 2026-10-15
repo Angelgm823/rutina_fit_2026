@@ -1,8 +1,8 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:rutina_fit/database/db.dart';
+import 'package:rutina_fit/controllers/bike_controller.dart';
 import 'package:rutina_fit/widgets/day_picker.dart';
 import 'package:rutina_fit/utils/format.dart';
+import 'package:rutina_fit/widgets/save_button.dart';
 
 class Bike extends StatefulWidget {
   final String name, descr;
@@ -12,109 +12,129 @@ class Bike extends StatefulWidget {
 }
 
 class _BikeState extends State<Bike> {
-  Duration acc = Duration.zero;
-  DateTime? startedAt;
-  Timer? ticker;
-  final manual = TextEditingController();
-  String date = dayKey(DateTime.now()); // puedes cambiarlo para registrar días pasados
+  late final ctrl = BikeController(widget.name);
+  late final manual = TextEditingController(text: ctrl.manual);
 
-  bool get running => startedAt != null;
-  Duration get elapsed =>
-      acc + (startedAt == null ? Duration.zero : DateTime.now().difference(startedAt!));
-
-  String get clock {
-    final s = elapsed.inSeconds;
-    return '${s ~/ 60}:${(s % 60).toString().padLeft(2, '0')}';
+  @override
+  void initState() {
+    super.initState();
+    ctrl.addListener(_syncManual);
   }
 
-  void _toggle() {
-    if (running) {
-      ticker?.cancel();
-      setState(() {
-        acc = elapsed;
-        startedAt = null;
-      });
-    } else {
-      startedAt = DateTime.now();
-      ticker = Timer.periodic(const Duration(seconds: 1), (_) => setState(() {}));
-      setState(() {});
-    }
+  /// Al reiniciar o guardar, el controller vacía los minutos: el campo lo refleja.
+  void _syncManual() {
+    if (manual.text != ctrl.manual) manual.text = ctrl.manual;
   }
 
-  void _reset() {
-    ticker?.cancel();
-    manual.clear();
-    setState(() {
-      acc = Duration.zero;
-      startedAt = null;
-    });
+  /// Al salir con el cronómetro en marcha se perdería el tiempo: pregunta primero.
+  Future<void> _confirmLeave() async {
+    final leave = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('¿Salir sin guardar?'),
+        content: Text('El cronómetro lleva ${ctrl.clock}. Si sales, se perderá ese tiempo.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Seguir')),
+          TextButton(onPressed: () => Navigator.pop(c, true), child: const Text('Salir')),
+        ],
+      ),
+    );
+    if (leave == true && mounted) Navigator.pop(context);
   }
 
   Future<void> _save() async {
-    var secs = elapsed.inSeconds;
-    if (secs == 0) secs = (int.tryParse(manual.text) ?? 0) * 60;
-    if (secs == 0) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Inicia el cronómetro o escribe los minutos.')));
-      return;
-    }
-    final id = '$date ${DateTime.now().toIso8601String().substring(11, 19)}'; // día elegido + hora actual
-    await Db.saveBike(id, secs, widget.name);
-    if (!mounted) return;
-    _reset();
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text('${widget.name}: ${fmtMins(secs)} guardados')));
+    final msg = ScaffoldMessenger.of(context);
+    final secs = await ctrl.save();
+    if (secs > 0) msg.showSnackBar(SnackBar(content: Text('${widget.name}: ${fmtMins(secs)} guardados')));
   }
 
   @override
   void dispose() {
-    ticker?.cancel();
+    ctrl.removeListener(_syncManual);
+    ctrl.dispose();
     manual.dispose();
     super.dispose();
   }
 
   @override
-  Widget build(BuildContext c) {
+  Widget build(BuildContext c) => ListenableBuilder(listenable: ctrl, builder: _build);
+
+  Widget _build(BuildContext c, Widget? _) {
     final theme = Theme.of(c);
-    return Scaffold(
-      appBar: AppBar(title: Text(widget.name, overflow: TextOverflow.ellipsis)),
-      body: ListView(padding: const EdgeInsets.all(24), children: [
-        DayPicker(selected: date, onChanged: (d) => setState(() => date = d)),
-        const SizedBox(height: 24),
-        Center(child: Text(clock, style: theme.textTheme.displayLarge)),
-        const SizedBox(height: 8),
-        Center(
-          child: Text(widget.descr.isEmpty ? 'Ritmo en el que puedas hablar sin ahogarte' : widget.descr,
-              textAlign: TextAlign.center, style: theme.textTheme.bodyMedium),
-        ),
-        const SizedBox(height: 32),
-        Row(children: [
-          Expanded(
-            child: FilledButton.icon(
-              onPressed: _toggle,
-              icon: Icon(running ? Icons.pause : Icons.play_arrow),
-              label: Text(running ? 'Pausar' : (acc == Duration.zero ? 'Iniciar' : 'Continuar')),
+    return PopScope(
+      canPop: ctrl.elapsed == Duration.zero,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _confirmLeave();
+      },
+      child: Scaffold(
+        appBar: AppBar(title: Text(widget.name, overflow: TextOverflow.ellipsis)),
+        body: ListView(
+          padding: const EdgeInsets.all(24),
+          children: [
+            DayPicker(selected: ctrl.date, onChanged: ctrl.setDate),
+            const SizedBox(height: 24),
+            Center(child: Text(ctrl.clock, style: theme.textTheme.displayLarge)),
+            const SizedBox(height: 8),
+            Center(
+              child: Text(
+                widget.descr.isEmpty ? 'Ritmo en el que puedas hablar sin ahogarte' : widget.descr,
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodyMedium,
+              ),
             ),
-          ),
-          const SizedBox(width: 12),
-          OutlinedButton(onPressed: _reset, child: const Text('Reiniciar')),
-        ]),
-        const SizedBox(height: 32),
-        TextField(
-          controller: manual,
-          keyboardType: TextInputType.number,
-          decoration: const InputDecoration(
-            labelText: 'Minutos (si no usaste el cronómetro)',
-            border: OutlineInputBorder(),
-          ),
+            const SizedBox(height: 20),
+            Wrap(
+              alignment: WrapAlignment.center,
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (final m in [0, 10, 20, 30, 45])
+                  ChoiceChip(
+                    label: Text(m == 0 ? 'Sin meta' : '$m min'),
+                    showCheckmark: false,
+                    selected: ctrl.goal == m,
+                    onSelected: (_) => ctrl.setGoal(m),
+                  ),
+              ],
+            ),
+            if (ctrl.goal > 0)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(
+                  ctrl.goalReached ? '¡Meta de ${ctrl.goal} min alcanzada!' : 'Te avisaremos al llegar a ${ctrl.goal} min',
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.bodySmall,
+                ),
+              ),
+            const SizedBox(height: 24),
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: ctrl.toggle,
+                    icon: Icon(ctrl.running ? Icons.pause : Icons.play_arrow),
+                    label: Text(ctrl.running ? 'Pausar' : (ctrl.acc == Duration.zero ? 'Iniciar' : 'Continuar')),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                OutlinedButton(onPressed: ctrl.reset, child: const Text('Reiniciar')),
+              ],
+            ),
+            const SizedBox(height: 32),
+            TextField(
+              controller: manual,
+              onChanged: ctrl.setManual,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                labelText: 'Minutos (si no usaste el cronómetro)',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 16),
+            SaveButton(onPressed: ctrl.canSave ? _save : null, label: 'Guardar sesión de cardio', expand: true),
+          ],
         ),
-        const SizedBox(height: 16),
-        FilledButton.tonalIcon(
-          onPressed: _save,
-          icon: const Icon(Icons.save),
-          label: const Text('Guardar sesión de cardio'),
-        ),
-      ]),
+      ),
     );
   }
 }

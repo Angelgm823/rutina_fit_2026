@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:rutina_fit/controllers/home_controller.dart';
 import 'package:rutina_fit/screens/history_screen.dart';
 import 'package:rutina_fit/screens/progress_screen.dart';
 import 'package:rutina_fit/screens/routines.dart';
-import 'package:rutina_fit/services/service.dart';
+import 'package:rutina_fit/widgets/theme_picker.dart';
 
 class Home extends StatefulWidget {
   const Home({super.key});
@@ -11,86 +12,77 @@ class Home extends StatefulWidget {
 }
 
 class _HomeState extends State<Home> {
-  int tab = 0;
-  int _gen = 0; // cambia tras importar un respaldo para recargar las pantallas
-
-  Future<void> _export(String kind) async {
-    final msg = ScaffoldMessenger.of(context);
-    try {
-      final report = await buildReport();
-      if (report.isEmpty) {
-        msg.showSnackBar(const SnackBar(content: Text('Aún no hay sesiones para exportar.')));
-        return;
-      }
-      final name = kind == 'pdf' ? await exportPdf(report) : await exportImage(report);
-      msg.showSnackBar(SnackBar(content: Text('Guardado en Descargas: $name')));
-    } catch (e) {
-      msg.showSnackBar(SnackBar(content: Text('No se pudo exportar: $e')));
-    }
-  }
-
-  Future<void> _backup(String action) async {
-    final msg = ScaffoldMessenger.of(context);
-    try {
-      if (action == 'export') {
-        final name = await exportBackup();
-        msg.showSnackBar(SnackBar(content: Text('Respaldo guardado en Descargas: $name')));
-        return;
-      }
-      final res = await importBackup();
-      if (res == null) return;
-      final (gym, bike, routines) = res;
-      setState(() => _gen++);
-      msg.showSnackBar(SnackBar(
-          content: Text('Respaldo importado: $gym sesiones de fuerza, $bike de cardio y $routines rutinas.')));
-    } catch (e) {
-      msg.showSnackBar(SnackBar(content: Text(e is FormatException ? e.message : 'Error con el respaldo: $e')));
-    }
-  }
+  final ctrl = HomeController();
 
   @override
-  Widget build(BuildContext c) => Scaffold(
-        appBar: AppBar(
-          title: Text(['Entrenar', 'Historial', 'Progreso'][tab]),
-          actions: [
-            if (tab == 1)
+  void dispose() {
+    ctrl.dispose();
+    super.dispose();
+  }
+
+  /// Corre una acción del controller y muestra su mensaje.
+  Future<void> _run(Future<String?> Function() action) async {
+    final msg = ScaffoldMessenger.of(context);
+    final text = await action();
+    if (text != null) msg.showSnackBar(SnackBar(content: Text(text)));
+  }
+
+  void _onMenu(String v) => switch (v) {
+        'theme' => showThemePicker(context),
+        'export' => _run(ctrl.exportBackupFile),
+        _ => _run(ctrl.importBackupFile),
+      };
+
+  @override
+  Widget build(BuildContext c) => ListenableBuilder(
+        listenable: ctrl,
+        builder: (c, _) => Scaffold(
+          appBar: AppBar(
+            title: Text(ctrl.title),
+            actions: [
+              if (ctrl.canDownload)
+                PopupMenuButton<String>(
+                  icon: const Icon(Icons.download),
+                  tooltip: 'Descargar historial',
+                  onSelected: (k) => _run(() => ctrl.exportReport(k)),
+                  itemBuilder: (_) => const [
+                    PopupMenuItem(value: 'pdf', child: Text('Descargar PDF')),
+                    PopupMenuItem(value: 'img', child: Text('Descargar imagen')),
+                  ],
+                ),
               PopupMenuButton<String>(
-                icon: const Icon(Icons.download),
-                tooltip: 'Descargar historial',
-                onSelected: _export,
+                tooltip: 'Más opciones',
+                onSelected: _onMenu,
                 itemBuilder: (_) => const [
-                  PopupMenuItem(value: 'pdf', child: Text('Descargar PDF')),
-                  PopupMenuItem(value: 'img', child: Text('Descargar imagen')),
+                  PopupMenuItem(
+                    value: 'theme',
+                    child: ListTile(leading: Icon(Icons.palette_outlined), title: Text('Tema')),
+                  ),
+                  PopupMenuItem(
+                    value: 'export',
+                    child: ListTile(leading: Icon(Icons.save_alt), title: Text('Exportar respaldo')),
+                  ),
+                  PopupMenuItem(
+                    value: 'import',
+                    child: ListTile(leading: Icon(Icons.restore), title: Text('Importar respaldo')),
+                  ),
                 ],
               ),
-            PopupMenuButton<String>(
-              tooltip: 'Respaldo',
-              onSelected: _backup,
-              itemBuilder: (_) => const [
-                PopupMenuItem(
-                  value: 'export',
-                  child: ListTile(leading: Icon(Icons.save_alt), title: Text('Exportar respaldo')),
-                ),
-                PopupMenuItem(
-                  value: 'import',
-                  child: ListTile(leading: Icon(Icons.restore), title: Text('Importar respaldo')),
-                ),
-              ],
-            ),
-          ],
-        ),
-        body: KeyedSubtree(
-          key: ValueKey(_gen),
-          child: [const RoutinesScreen(), const History(), const Progress()][tab],
-        ),
-        bottomNavigationBar: NavigationBar(
-          selectedIndex: tab,
-          onDestinationSelected: (i) => setState(() => tab = i),
-          destinations: const [
-            NavigationDestination(icon: Icon(Icons.fitness_center), label: 'Entrenar'),
-            NavigationDestination(icon: Icon(Icons.history), label: 'Historial'),
-            NavigationDestination(icon: Icon(Icons.show_chart), label: 'Progreso'),
-          ],
+            ],
+          ),
+          body: KeyedSubtree(
+            key: ValueKey(ctrl.gen),
+            child: [const RoutinesScreen(), const History(), const Progress()][ctrl.tab],
+          ),
+          bottomNavigationBar: NavigationBar(
+            selectedIndex: ctrl.tab,
+            onDestinationSelected: ctrl.selectTab,
+            destinations: const [
+              NavigationDestination(icon: Icon(Icons.fitness_center), label: 'Entrenar'),
+              NavigationDestination(icon: Icon(Icons.history), label: 'Historial'),
+              NavigationDestination(icon: Icon(Icons.show_chart), label: 'Progreso'),
+            ],
+          ),
         ),
       );
 }
