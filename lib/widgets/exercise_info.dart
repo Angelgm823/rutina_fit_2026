@@ -37,7 +37,7 @@ void showExerciseInfo(BuildContext context, Ex ex) {
             const SizedBox(height: 6),
             Text(
               ex.descr.isEmpty ? 'Este ejercicio todavía no tiene descripción.' : ex.descr,
-              style: ex.descr.isEmpty ? const TextStyle(color: cSlate) : null,
+              style: ex.descr.isEmpty ? TextStyle(color: cSlate) : null,
             ),
           ]),
         ),

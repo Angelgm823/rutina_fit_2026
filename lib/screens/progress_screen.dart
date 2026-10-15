@@ -15,7 +15,6 @@ import 'package:syncfusion_flutter_charts/charts.dart'
         ChartAlignment,
         DataLabelSettings;
 import 'package:rutina_fit/database/db.dart';
-import 'package:rutina_fit/models/exercises.dart';
 import 'package:rutina_fit/theme/app_theme.dart';
 import 'package:rutina_fit/utils/format.dart';
 
@@ -28,31 +27,10 @@ class Progress extends StatefulWidget {
 }
 
 class _ProgressState extends State<Progress> {
-  List<String> names = [];
-  String ex = '';
-  Kind kind = Kind.weight;
   bool loaded = false;
 
-  /// Unidad y nombre de la marca según el tipo de ejercicio.
-  (String unit, String best) get _measure => switch (kind) {
-    Kind.weight => ('kg', 'Mejor peso'),
-    Kind.band => ('nivel', 'Mejor resistencia'),
-    Kind.timed => ('s', 'Mejor tiempo'),
-  };
-
-  Future<void> _select(String name) async {
-    final k = await Db.kind(name);
-    if (!mounted) return;
-    setState(() {
-      ex = name;
-      kind = k;
-      series = Db.weightSeries(name, timed: k == Kind.timed);
-    });
-  }
-
-  Future<List<Pt>>? series; // marca del ejercicio elegido
-  Future<List<Pt>> bike = Db.bikeSeries();
-  bool hasBike = false;
+  List<Pt> strength = []; // ejercicios hechos por sesión
+  List<Pt> cardio = []; // minutos de cardio por sesión
 
   @override
   void initState() {
@@ -60,19 +38,16 @@ class _ProgressState extends State<Progress> {
     _load();
   }
 
-  /// Carga (o recarga al arrastrar hacia abajo) ejercicios y gráficas; conserva el ejercicio elegido.
+  /// Carga (o recarga al arrastrar hacia abajo) las gráficas.
   Future<void> _load() async {
-    final l = await Db.loggedExercises();
-    final b = Db.bikeSeries();
-    final nBike = (await b).length;
+    final s = await Db.strengthSeries();
+    final b = await Db.bikeSeries();
     if (!mounted) return;
     setState(() {
-      names = l;
-      bike = b;
-      hasBike = nBike > 0;
+      strength = s;
+      cardio = b;
       loaded = true;
     });
-    if (l.isNotEmpty) await _select(l.contains(ex) ? ex : l.first);
   }
 
   // Periodo: año + trimestre (0 = año completo). Por defecto, el trimestre actual.
@@ -81,6 +56,9 @@ class _ProgressState extends State<Progress> {
 
   static const _qNames = ['Año completo', 'T1 · Ene–Mar', 'T2 · Abr–Jun', 'T3 · Jul–Sep', 'T4 · Oct–Dic'];
   String get period => quarter == 0 ? 'Año $year' : '${_qNames[quarter]} $year';
+
+  List<Pt> _inPeriod(List<Pt> all) =>
+      all.where((pt) => pt.x.year == year && (quarter == 0 || (pt.x.month - 1) ~/ 3 + 1 == quarter)).toList();
 
   String _n1(double v) => fmt(double.parse(v.toStringAsFixed(1)));
 
@@ -96,46 +74,55 @@ class _ProgressState extends State<Progress> {
   }
 
   Widget _stat(String value, String caption) => Expanded(
-    child: Column(
-      children: [
-        Text(value, style: Theme.of(context).textTheme.titleMedium),
-        Text(caption, style: const TextStyle(color: cSlate, fontSize: 12)),
-      ],
-    ),
-  );
+        child: Column(
+          children: [
+            Text(value, style: Theme.of(context).textTheme.titleMedium),
+            Text(caption, style: TextStyle(color: cSlate, fontSize: 12)),
+          ],
+        ),
+      );
 
-  Widget _block(List<Pt>? all, {required bool line, required String unit}) {
-    if (all == null) {
-      return const SizedBox(height: 240, child: Center(child: CircularProgressIndicator()));
-    }
-    final d = all.where((pt) => pt.x.year == year && (quarter == 0 || (pt.x.month - 1) ~/ 3 + 1 == quarter)).toList();
-    if (d.isEmpty) {
-      return SizedBox(height: 200, child: Center(child: Text('Sin datos en $period.')));
-    }
+  /// Tarjeta que separa cada sección de la pantalla.
+  Widget _section(IconData icon, String title, String subtitle, List<Widget> children) => Container(
+        margin: const EdgeInsets.only(top: 16),
+        padding: const EdgeInsets.fromLTRB(14, 14, 14, 8),
+        decoration: BoxDecoration(
+          color: cNight,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: cSteel.withValues(alpha: 0.6)),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Icon(icon, size: 20, color: cAccent),
+            const SizedBox(width: 8),
+            Expanded(child: Text(title, style: Theme.of(context).textTheme.titleMedium)),
+          ]),
+          const SizedBox(height: 2),
+          Text(subtitle, style: TextStyle(color: cSlate, fontSize: 12)),
+          const SizedBox(height: 12),
+          ...children,
+        ]),
+      );
+
+  /// Gráfica de un periodo con datos (d no vacía).
+  Widget _chart(
+    List<Pt> d, {
+    required bool line,
+    required String unit,
+    required List<Widget> stats,
+    required Color color,
+    required String Function(double) label,
+    double? max,
+    double? interval,
+  }) {
     final shown = d.length > _maxSessions ? d.sublist(d.length - _maxSessions) : d;
     final labels = _labels(shown);
     final top = shown.map((pt) => pt.y).reduce((a, b) => a > b ? a : b);
-    const axisText = TextStyle(color: cSlate);
-
-    // Resumen encima de la gráfica
-    final List<Widget> stats;
-    if (line) {
-      final best = d.map((pt) => pt.y).reduce((a, b) => a > b ? a : b);
-      final change = d.last.y - d.first.y;
-      final (u, caption) = _measure;
-      stats = [
-        _stat('${_n1(best)} $u', caption),
-        _stat('${change >= 0 ? '+' : ''}${_n1(change)} $u', 'Cambio'),
-        _stat('${d.length}', 'Sesiones'),
-      ];
-    } else {
-      final total = d.fold<double>(0, (s, pt) => s + pt.y);
-      stats = [
-        _stat('${d.length}', 'Sesiones'),
-        _stat('${_n1(total)} min', 'Total'),
-        _stat('${_n1(total / d.length)} min', 'Promedio'),
-      ];
-    }
+    final axisText = TextStyle(color: cSlate);
+    final dataLabels = DataLabelSettings(
+      isVisible: shown.length <= 12, // con muchas sesiones las etiquetas se enciman
+      textStyle: TextStyle(color: cMist, fontSize: 11),
+    );
 
     return Column(
       children: [
@@ -153,17 +140,17 @@ class _ProgressState extends State<Progress> {
             primaryXAxis: CategoryAxis(
               labelStyle: axisText,
               labelRotation: shown.length > 5 ? -45 : 0,
-              axisLine: const AxisLine(color: cSteel),
+              axisLine: AxisLine(color: cSteel),
               majorGridLines: const MajorGridLines(width: 0),
             ),
             primaryYAxis: NumericAxis(
               minimum: 0,
-              maximum: line && kind == Kind.band ? 3.5 : (top * 1.25).ceilToDouble(),
-              interval: line && kind == Kind.band ? 1 : null,
+              maximum: max ?? (top * 1.25).ceilToDouble(),
+              interval: interval,
               labelStyle: axisText,
               title: AxisTitle(text: unit, textStyle: axisText),
               axisLine: const AxisLine(width: 0),
-              majorGridLines: const MajorGridLines(color: cSteel, width: 0.5),
+              majorGridLines: MajorGridLines(color: cSteel, width: 0.5),
             ),
             series: [
               if (line)
@@ -171,26 +158,20 @@ class _ProgressState extends State<Progress> {
                   dataSource: shown,
                   xValueMapper: (pt, i) => labels[i],
                   yValueMapper: (pt, _) => pt.y,
-                  dataLabelMapper: (pt, _) => fmt(pt.y),
-                  dataLabelSettings: const DataLabelSettings(
-                    isVisible: true,
-                    textStyle: TextStyle(color: cMist, fontSize: 11),
-                  ),
-                  color: cMist,
+                  dataLabelMapper: (pt, _) => label(pt.y),
+                  dataLabelSettings: dataLabels,
+                  color: color,
                   width: 3,
-                  markerSettings: const MarkerSettings(isVisible: true, height: 8, width: 8, color: cMist),
+                  markerSettings: MarkerSettings(isVisible: true, height: 8, width: 8, color: color),
                 )
               else
                 ColumnSeries<Pt, String>(
                   dataSource: shown,
                   xValueMapper: (pt, i) => labels[i],
                   yValueMapper: (pt, _) => pt.y,
-                  dataLabelMapper: (pt, _) => _n1(pt.y),
-                  dataLabelSettings: const DataLabelSettings(
-                    isVisible: true,
-                    textStyle: TextStyle(color: cMist, fontSize: 11),
-                  ),
-                  color: cSlate,
+                  dataLabelMapper: (pt, _) => label(pt.y),
+                  dataLabelSettings: dataLabels,
+                  color: color,
                   width: 0.4,
                   borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
                 ),
@@ -201,11 +182,50 @@ class _ProgressState extends State<Progress> {
     );
   }
 
+  /// Fuerza: ejercicios hechos por sesión.
+  Widget _strengthSection(List<Pt> d) {
+    final total = d.fold<double>(0, (s, pt) => s + pt.y);
+    return _section(Icons.fitness_center, 'Fuerza: ejercicios por sesión', 'Ejercicios con al menos una serie hecha', [
+      _chart(
+        d,
+        line: false,
+        unit: 'ejercicios',
+        color: cAccent,
+        label: (v) => fmt(v),
+        interval: 1,
+        stats: [
+          _stat('${d.length}', 'Sesiones'),
+          _stat(fmt(total), 'Ejercicios'),
+          _stat(_n1(total / d.length), 'Por sesión'),
+        ],
+      ),
+    ]);
+  }
+
+  /// Cardio: minutos por sesión.
+  Widget _cardioSection(List<Pt> d) {
+    final total = d.fold<double>(0, (s, pt) => s + pt.y);
+    return _section(Icons.directions_bike, 'Cardio: minutos por sesión', 'Bicicleta, caminadora y otros', [
+      _chart(
+        d,
+        line: false,
+        unit: 'min',
+        color: cMist.withValues(alpha: 0.7),
+        label: (v) => _n1(v),
+        stats: [
+          _stat('${d.length}', 'Sesiones'),
+          _stat('${_n1(total)} min', 'Total'),
+          _stat('${_n1(total / d.length)} min', 'Promedio'),
+        ],
+      ),
+    ]);
+  }
+
   @override
   Widget build(BuildContext c) {
     if (!loaded) return const Center(child: CircularProgressIndicator());
     final t = Theme.of(c).textTheme;
-    if (names.isEmpty && !hasBike) {
+    if (strength.isEmpty && cardio.isEmpty) {
       return RefreshIndicator(
         onRefresh: _load,
         child: ListView(
@@ -217,6 +237,11 @@ class _ProgressState extends State<Progress> {
         ),
       );
     }
+
+    // Solo se muestran las gráficas que tienen datos en el periodo elegido.
+    final s = _inPeriod(strength);
+    final cc = _inPeriod(cardio);
+
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView(
@@ -245,33 +270,14 @@ class _ProgressState extends State<Progress> {
             selected: {quarter},
             onSelectionChanged: (v) => setState(() => quarter = v.first),
           ),
-          if (names.isNotEmpty) ...[
-            const SizedBox(height: 20),
-            Text(switch (kind) {
-              Kind.weight => 'Peso máximo por sesión',
-              Kind.band => 'Resistencia de liga por sesión (1–3)',
-              Kind.timed => 'Tiempo máximo por sesión',
-            }, style: t.titleMedium),
-            DropdownButton<String>(
-              isExpanded: true,
-              value: ex.isEmpty ? null : ex,
-              dropdownColor: cNight,
-              items: [for (final n in names) DropdownMenuItem(value: n, child: Text(n))],
-              onChanged: (v) => v == null ? null : _select(v),
+          if (s.isEmpty && cc.isEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 80),
+              child: Text('Sin entrenamientos en $period.', textAlign: TextAlign.center, style: TextStyle(color: cSlate)),
             ),
-            const SizedBox(height: 8),
-            FutureBuilder<List<Pt>>(
-              future: series,
-              builder: (c, s) => _block(s.data, line: true, unit: _measure.$1),
-            ),
-          ],
-          const SizedBox(height: 28),
-          Text('Cardio: minutos por sesión', style: t.titleMedium),
-          const SizedBox(height: 8),
-          FutureBuilder<List<Pt>>(
-            future: bike,
-            builder: (c, s) => _block(s.data, line: false, unit: 'min'),
-          ),
+          if (s.isNotEmpty) _strengthSection(s),
+          if (cc.isNotEmpty) _cardioSection(cc),
+          const SizedBox(height: 16),
         ],
       ),
     );

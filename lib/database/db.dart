@@ -32,6 +32,16 @@ class Db {
         onOpen: _syncCatalog,
       );
 
+  /// Lee un valor guardado (ajustes de la app).
+  static Future<String?> getMeta(String key) async {
+    final r = await (await db).query('meta', where: 'key = ?', whereArgs: [key]);
+    return r.isEmpty ? null : r.first['value'] as String?;
+  }
+
+  /// Guarda un valor (ajustes de la app).
+  static Future<void> setMeta(String key, String value) async =>
+      (await db).insert('meta', {'key': key, 'value': value}, conflictAlgorithm: ConflictAlgorithm.replace);
+
   static Future<void> _createLibrary(Database d) async {
     await d.execute('CREATE TABLE exercises(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE, '
         'category TEXT, sub TEXT, reps TEXT, tip TEXT, unit TEXT, custom INTEGER DEFAULT 0, '
@@ -306,6 +316,13 @@ class Db {
         ' WHERE exercise=? AND done=1 AND $col>0 GROUP BY date ORDER BY date',
         [ex]);
     return [for (final r in rows) Pt(_parse(r['date'] as String), (r['w'] as num).toDouble())];
+  }
+
+  /// Fuerza: cuántos ejercicios distintos hiciste en cada sesión (con al menos una serie hecha).
+  static Future<List<Pt>> strengthSeries() async {
+    final rows = await (await db).rawQuery(
+        'SELECT date, COUNT(DISTINCT exercise) AS n FROM logs WHERE done=1 GROUP BY date ORDER BY date');
+    return [for (final r in rows) Pt(_parse(r['date'] as String), (r['n'] as num).toDouble())];
   }
 
   /// Minutos de cardio por sesión.

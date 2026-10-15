@@ -1,14 +1,19 @@
 import 'dart:io' show Platform;
 
-import 'package:flutter/foundation.dart' show debugPrint;
+import 'package:flutter/widgets.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as tz;
 
 /// Temporizadores en segundo plano: mientras corren se ve un contador en la barra de notificaciones,
 /// y al terminar llega un aviso programado en Android, que suena aunque la app esté cerrada o la pantalla apagada.
+/// Con la app a la vista el aviso lo da la propia pantalla, así que el programado solo existe mientras está oculta.
 class TimerAlerts {
   static final _plugin = FlutterLocalNotificationsPlugin();
-  static bool _ready = false, _asked = false;
+  static Future<bool>? _ready;
+  static bool _asked = false, _visible = true;
+
+  /// Avisos finales pedidos por las pantallas: id → (hora, título, texto).
+  static final _pending = <int, (DateTime, String, String)>{};
 
   // Un id por temporizador: el contador visible y el aviso final.
   static const restRunning = 1, restDone = 2, cardioRunning = 3, cardioDone = 4;
@@ -30,16 +35,43 @@ class TimerAlerts {
     ),
   );
 
-  static Future<bool> _init() async {
+  /// Se inicia una sola vez aunque varias llamadas lleguen a la vez. Llamarlo al abrir la app
+  /// limpia lo que haya dejado una sesión anterior.
+  static Future<bool> init() => _ready ??= _start();
+
+  static Future<bool> _start() async {
     if (!Platform.isAndroid) return false;
-    if (_ready) return true;
     try {
       await _plugin.initialize(settings: const InitializationSettings(android: AndroidInitializationSettings(_icon)));
-      _ready = true;
+      // Al arrancar no hay temporizadores vivos: lo que quede (contador fijo en la barra o aviso pendiente)
+      // es de una sesión que el sistema o el usuario cerraron.
+      await _plugin.cancelAll();
     } catch (e) {
       debugPrint('No se pudieron iniciar las notificaciones: $e');
+      return false;
     }
-    return _ready;
+    AppLifecycleListener(onHide: _onHide, onShow: _onShow);
+    return true;
+  }
+
+  /// La app deja de verse: se programan los avisos que falten.
+  static void _onHide() {
+    _visible = false;
+    final now = DateTime.now();
+    _pending.removeWhere((_, p) => !p.$1.isAfter(now));
+    _pending.forEach((id, p) => _schedule(id, p.$1, p.$2, p.$3));
+  }
+
+  /// La app vuelve a verse: la pantalla avisa sola, así que se quitan los programados que aún no sonaron.
+  static Future<void> _onShow() async {
+    _visible = true;
+    final now = DateTime.now();
+    _pending.removeWhere((_, p) => !p.$1.isAfter(now));
+    for (final id in _pending.keys.toList()) {
+      try {
+        await _plugin.cancel(id: id);
+      } catch (_) {}
+    }
   }
 
   /// Pide permiso de notificaciones (Android 13+) la primera vez que se usa un temporizador.
@@ -53,7 +85,7 @@ class TimerAlerts {
 
   /// Contador en la barra: cuenta hacia atrás hasta [end], o hacia arriba desde [start].
   static Future<void> showRunning(int id, String title, String body, {DateTime? end, DateTime? start}) async {
-    if (!await _init()) return;
+    if (!await init()) return;
     await _ensurePermission();
     final left = end?.difference(DateTime.now()).inMilliseconds;
     try {
@@ -78,7 +110,8 @@ class TimerAlerts {
             usesChronometer: true,
             chronometerCountDown: end != null,
             when: (end ?? start ?? DateTime.now()).millisecondsSinceEpoch,
-            timeoutAfter: left == null ? null : (left < 0 ? 0 : left),
+            // 0 significaría "nunca se quita": si ya terminó, se quita casi de inmediato.
+            timeoutAfter: left == null ? null : (left < 1 ? 1 : left),
           ),
         ),
       );
@@ -87,10 +120,15 @@ class TimerAlerts {
     }
   }
 
-  /// Programa el aviso final a la hora exacta [at].
+  /// Aviso final a la hora exacta [at]. Solo se programa en Android mientras la app está oculta.
   static Future<void> scheduleDone(int id, DateTime at, String title, String body) async {
-    if (!await _init()) return;
+    if (!await init()) return;
     await _ensurePermission();
+    _pending[id] = (at, title, body);
+    if (!_visible) await _schedule(id, at, title, body);
+  }
+
+  static Future<void> _schedule(int id, DateTime at, String title, String body) async {
     final when = at.isAfter(DateTime.now()) ? at : DateTime.now().add(const Duration(seconds: 1));
     try {
       await _plugin.zonedSchedule(
@@ -119,8 +157,9 @@ class TimerAlerts {
   }
 
   static Future<void> cancel(List<int> ids) async {
-    if (!await _init()) return;
+    if (!await init()) return;
     for (final id in ids) {
+      _pending.remove(id);
       try {
         await _plugin.cancel(id: id);
       } catch (_) {}

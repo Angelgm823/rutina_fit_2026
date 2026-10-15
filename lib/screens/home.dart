@@ -3,6 +3,7 @@ import 'package:rutina_fit/screens/history_screen.dart';
 import 'package:rutina_fit/screens/progress_screen.dart';
 import 'package:rutina_fit/screens/routines.dart';
 import 'package:rutina_fit/services/service.dart';
+import 'package:rutina_fit/widgets/theme_picker.dart';
 
 class Home extends StatefulWidget {
   const Home({super.key});
@@ -23,7 +24,8 @@ class _HomeState extends State<Home> {
         return;
       }
       final name = kind == 'pdf' ? await exportPdf(report) : await exportImage(report);
-      msg.showSnackBar(SnackBar(content: Text('Guardado en Descargas: $name')));
+      if (name == null) return;
+      msg.showSnackBar(SnackBar(content: Text('Guardado: $name')));
     } catch (e) {
       msg.showSnackBar(SnackBar(content: Text('No se pudo exportar: $e')));
     }
@@ -34,7 +36,8 @@ class _HomeState extends State<Home> {
     try {
       if (action == 'export') {
         final name = await exportBackup();
-        msg.showSnackBar(SnackBar(content: Text('Respaldo guardado en Descargas: $name')));
+        if (name == null) return;
+        msg.showSnackBar(SnackBar(content: Text('Respaldo guardado: $name')));
         return;
       }
       final res = await importBackup();
@@ -64,9 +67,13 @@ class _HomeState extends State<Home> {
                 ],
               ),
             PopupMenuButton<String>(
-              tooltip: 'Respaldo',
-              onSelected: _backup,
+              tooltip: 'Más opciones',
+              onSelected: (v) => v == 'theme' ? showThemePicker(context) : _backup(v),
               itemBuilder: (_) => const [
+                PopupMenuItem(
+                  value: 'theme',
+                  child: ListTile(leading: Icon(Icons.palette_outlined), title: Text('Tema')),
+                ),
                 PopupMenuItem(
                   value: 'export',
                   child: ListTile(leading: Icon(Icons.save_alt), title: Text('Exportar respaldo')),
