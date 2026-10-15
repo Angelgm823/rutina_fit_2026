@@ -1,9 +1,5 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:rutina_fit/database/db.dart';
-import 'package:rutina_fit/services/notifications.dart';
+import 'package:rutina_fit/controllers/bike_controller.dart';
 import 'package:rutina_fit/widgets/day_picker.dart';
 import 'package:rutina_fit/utils/format.dart';
 import 'package:rutina_fit/widgets/save_button.dart';
@@ -16,96 +12,18 @@ class Bike extends StatefulWidget {
 }
 
 class _BikeState extends State<Bike> {
-  Duration acc = Duration.zero;
-  DateTime? startedAt;
-  Timer? ticker;
-  final manual = TextEditingController();
-  String date = dayKey(DateTime.now()); // puedes cambiarlo para registrar días pasados
-  int goal = 0; // meta en minutos (0 = sin meta); al llegar, avisa con una notificación
-  bool goalReached = false;
+  late final ctrl = BikeController(widget.name);
+  late final manual = TextEditingController(text: ctrl.manual);
 
   @override
   void initState() {
     super.initState();
-    manual.addListener(() => setState(() {})); // activa o desactiva el botón Guardar
+    ctrl.addListener(_syncManual);
   }
 
-  bool get canSave => elapsed > Duration.zero || (int.tryParse(manual.text) ?? 0) > 0;
-
-  bool get running => startedAt != null;
-  Duration get elapsed => acc + (startedAt == null ? Duration.zero : DateTime.now().difference(startedAt!));
-
-  String get clock {
-    final s = elapsed.inSeconds;
-    return '${s ~/ 60}:${(s % 60).toString().padLeft(2, '0')}';
-  }
-
-  void _toggle() {
-    if (running) {
-      ticker?.cancel();
-      setState(() {
-        acc = elapsed;
-        startedAt = null;
-      });
-      _cancelAlerts();
-    } else {
-      startedAt = DateTime.now();
-      ticker = Timer.periodic(const Duration(seconds: 1), (_) => _tick());
-      setState(() {});
-      _notify();
-    }
-  }
-
-  /// La hora sale de startedAt, así que el tiempo es exacto aunque la app haya estado en segundo plano.
-  void _tick() {
-    if (goal > 0 && !goalReached && elapsed.inSeconds >= goal * 60) {
-      goalReached = true;
-      HapticFeedback.heavyImpact();
-      SystemSound.play(SystemSoundType.alert);
-    }
-    setState(() {});
-  }
-
-  /// Contador en la barra de notificaciones y, si hay meta, aviso programado para cuando la alcances.
-  void _notify() {
-    if (startedAt == null) return;
-    final from = DateTime.now().subtract(elapsed);
-    TimerAlerts.showRunning(
-      TimerAlerts.cardioRunning,
-      widget.name,
-      goal > 0 ? 'Meta: $goal min' : 'Cronómetro en marcha',
-      start: from,
-    );
-    TimerAlerts.cancel([TimerAlerts.cardioDone]);
-    if (goal > 0 && !goalReached) {
-      TimerAlerts.scheduleDone(
-        TimerAlerts.cardioDone,
-        from.add(Duration(minutes: goal)),
-        '¡Meta alcanzada!',
-        '${widget.name}: llevas $goal min. Guarda tu sesión cuando termines.',
-      );
-    }
-  }
-
-  void _setGoal(int m) {
-    setState(() {
-      goal = m;
-      goalReached = m > 0 && elapsed.inSeconds >= m * 60;
-    });
-    _notify();
-  }
-
-  void _cancelAlerts() => TimerAlerts.cancel([TimerAlerts.cardioRunning, TimerAlerts.cardioDone]);
-
-  void _reset() {
-    ticker?.cancel();
-    manual.clear();
-    _cancelAlerts();
-    setState(() {
-      acc = Duration.zero;
-      startedAt = null;
-      goalReached = false;
-    });
+  /// Al reiniciar o guardar, el controller vacía los minutos: el campo lo refleja.
+  void _syncManual() {
+    if (manual.text != ctrl.manual) manual.text = ctrl.manual;
   }
 
   /// Al salir con el cronómetro en marcha se perdería el tiempo: pregunta primero.
@@ -114,7 +32,7 @@ class _BikeState extends State<Bike> {
       context: context,
       builder: (c) => AlertDialog(
         title: const Text('¿Salir sin guardar?'),
-        content: Text('El cronómetro lleva $clock. Si sales, se perderá ese tiempo.'),
+        content: Text('El cronómetro lleva ${ctrl.clock}. Si sales, se perderá ese tiempo.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Seguir')),
           TextButton(onPressed: () => Navigator.pop(c, true), child: const Text('Salir')),
@@ -125,29 +43,26 @@ class _BikeState extends State<Bike> {
   }
 
   Future<void> _save() async {
-    var secs = elapsed.inSeconds;
-    if (secs == 0) secs = (int.tryParse(manual.text) ?? 0) * 60;
-    if (secs == 0) return;
-    final id = '$date ${DateTime.now().toIso8601String().substring(11, 19)}'; // día elegido + hora actual
-    await Db.saveBike(id, secs, widget.name);
-    if (!mounted) return;
-    _reset();
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${widget.name}: ${fmtMins(secs)} guardados')));
+    final msg = ScaffoldMessenger.of(context);
+    final secs = await ctrl.save();
+    if (secs > 0) msg.showSnackBar(SnackBar(content: Text('${widget.name}: ${fmtMins(secs)} guardados')));
   }
 
   @override
   void dispose() {
-    ticker?.cancel();
-    if (startedAt != null) _cancelAlerts();
+    ctrl.removeListener(_syncManual);
+    ctrl.dispose();
     manual.dispose();
     super.dispose();
   }
 
   @override
-  Widget build(BuildContext c) {
+  Widget build(BuildContext c) => ListenableBuilder(listenable: ctrl, builder: _build);
+
+  Widget _build(BuildContext c, Widget? _) {
     final theme = Theme.of(c);
     return PopScope(
-      canPop: elapsed == Duration.zero,
+      canPop: ctrl.elapsed == Duration.zero,
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop) _confirmLeave();
       },
@@ -156,9 +71,9 @@ class _BikeState extends State<Bike> {
         body: ListView(
           padding: const EdgeInsets.all(24),
           children: [
-            DayPicker(selected: date, onChanged: (d) => setState(() => date = d)),
+            DayPicker(selected: ctrl.date, onChanged: ctrl.setDate),
             const SizedBox(height: 24),
-            Center(child: Text(clock, style: theme.textTheme.displayLarge)),
+            Center(child: Text(ctrl.clock, style: theme.textTheme.displayLarge)),
             const SizedBox(height: 8),
             Center(
               child: Text(
@@ -177,16 +92,16 @@ class _BikeState extends State<Bike> {
                   ChoiceChip(
                     label: Text(m == 0 ? 'Sin meta' : '$m min'),
                     showCheckmark: false,
-                    selected: goal == m,
-                    onSelected: (_) => _setGoal(m),
+                    selected: ctrl.goal == m,
+                    onSelected: (_) => ctrl.setGoal(m),
                   ),
               ],
             ),
-            if (goal > 0)
+            if (ctrl.goal > 0)
               Padding(
                 padding: const EdgeInsets.only(top: 8),
                 child: Text(
-                  goalReached ? '¡Meta de $goal min alcanzada!' : 'Te avisaremos al llegar a $goal min',
+                  ctrl.goalReached ? '¡Meta de ${ctrl.goal} min alcanzada!' : 'Te avisaremos al llegar a ${ctrl.goal} min',
                   textAlign: TextAlign.center,
                   style: theme.textTheme.bodySmall,
                 ),
@@ -196,18 +111,19 @@ class _BikeState extends State<Bike> {
               children: [
                 Expanded(
                   child: FilledButton.icon(
-                    onPressed: _toggle,
-                    icon: Icon(running ? Icons.pause : Icons.play_arrow),
-                    label: Text(running ? 'Pausar' : (acc == Duration.zero ? 'Iniciar' : 'Continuar')),
+                    onPressed: ctrl.toggle,
+                    icon: Icon(ctrl.running ? Icons.pause : Icons.play_arrow),
+                    label: Text(ctrl.running ? 'Pausar' : (ctrl.acc == Duration.zero ? 'Iniciar' : 'Continuar')),
                   ),
                 ),
                 const SizedBox(width: 12),
-                OutlinedButton(onPressed: _reset, child: const Text('Reiniciar')),
+                OutlinedButton(onPressed: ctrl.reset, child: const Text('Reiniciar')),
               ],
             ),
             const SizedBox(height: 32),
             TextField(
               controller: manual,
+              onChanged: ctrl.setManual,
               keyboardType: TextInputType.number,
               decoration: const InputDecoration(
                 labelText: 'Minutos (si no usaste el cronómetro)',
@@ -215,7 +131,7 @@ class _BikeState extends State<Bike> {
               ),
             ),
             const SizedBox(height: 16),
-            SaveButton(onPressed: canSave ? _save : null, label: 'Guardar sesión de cardio', expand: true),
+            SaveButton(onPressed: ctrl.canSave ? _save : null, label: 'Guardar sesión de cardio', expand: true),
           ],
         ),
       ),
