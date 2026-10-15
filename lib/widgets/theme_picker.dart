@@ -23,10 +23,20 @@ class _ThemePicker extends StatelessWidget {
               const SizedBox(height: 4),
               Text('Elige los colores de la app.', style: TextStyle(color: cSlate)),
               const SizedBox(height: 12),
-              for (final p in palettes) _tile(p, p.id == current.id),
+              _group('Oscuros'),
+              for (final p in palettes.where((p) => !p.light)) _tile(p, p.id == current.id),
+              const SizedBox(height: 8),
+              _group('Claros'),
+              for (final p in palettes.where((p) => p.light)) _tile(p, p.id == current.id),
             ]),
           ),
         ),
+      );
+
+  Widget _group(String title) => Padding(
+        padding: const EdgeInsets.only(bottom: 8, left: 2),
+        child: Text(title.toUpperCase(),
+            style: TextStyle(color: cSlate, fontSize: 12, fontWeight: FontWeight.w600, letterSpacing: 0.8)),
       );
 
   Widget _tile(AppPalette p, bool selected) => Padding(

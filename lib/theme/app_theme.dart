@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:rutina_fit/database/db.dart';
 
-/// Un tema de colores de la app (todos oscuros).
+/// Un tema de colores de la app (oscuro o claro).
 class AppPalette {
   final String id;
   final String name;
@@ -12,6 +12,7 @@ class AppPalette {
   final Color mist; // texto principal
   final Color accent; // botones, selección, gráficas
   final Color onAccent; // texto encima del acento
+  final bool light; // true = tema claro
   const AppPalette({
     required this.id,
     required this.name,
@@ -22,6 +23,7 @@ class AppPalette {
     required this.mist,
     required this.accent,
     required this.onAccent,
+    this.light = false,
   });
 }
 
@@ -69,6 +71,50 @@ const palettes = <AppPalette>[
     slate: Color(0xFFADA59A), mist: Color(0xFFF0EBE3),
     accent: Color(0xFFFBBF24), onAccent: Color(0xFF141210),
   ),
+
+  // ---------- Claros (mismos tonos que los oscuros) ----------
+  AppPalette(
+    id: 'grafito_claro', name: 'Grafito claro', light: true,
+    ink: Color(0xFFF3F4F6), night: Color(0xFFFFFFFF), steel: Color(0xFFD1D5DB),
+    slate: Color(0xFF6B7280), mist: Color(0xFF111827),
+    accent: Color(0xFF1F2937), onAccent: Color(0xFFFFFFFF),
+  ),
+  AppPalette(
+    id: 'blanco', name: 'Blanco puro', light: true,
+    ink: Color(0xFFFFFFFF), night: Color(0xFFF5F5F5), steel: Color(0xFFE0E0E0),
+    slate: Color(0xFF737373), mist: Color(0xFF0A0A0A),
+    accent: Color(0xFF0A0A0A), onAccent: Color(0xFFFFFFFF),
+  ),
+  AppPalette(
+    id: 'medianoche_claro', name: 'Medianoche claro', light: true,
+    ink: Color(0xFFEEF3FA), night: Color(0xFFFFFFFF), steel: Color(0xFFCBD5E1),
+    slate: Color(0xFF64748B), mist: Color(0xFF0F172A),
+    accent: Color(0xFF2563EB), onAccent: Color(0xFFFFFFFF),
+  ),
+  AppPalette(
+    id: 'bosque_claro', name: 'Bosque claro', light: true,
+    ink: Color(0xFFEEF5F0), night: Color(0xFFFFFFFF), steel: Color(0xFFC7DACE),
+    slate: Color(0xFF5F7A6B), mist: Color(0xFF0F1F17),
+    accent: Color(0xFF059669), onAccent: Color(0xFFFFFFFF),
+  ),
+  AppPalette(
+    id: 'carmesi_claro', name: 'Carmesí claro', light: true,
+    ink: Color(0xFFFBF0F2), night: Color(0xFFFFFFFF), steel: Color(0xFFE8CDD3),
+    slate: Color(0xFF8A5E68), mist: Color(0xFF2A1015),
+    accent: Color(0xFFDC2626), onAccent: Color(0xFFFFFFFF),
+  ),
+  AppPalette(
+    id: 'amatista_claro', name: 'Amatista claro', light: true,
+    ink: Color(0xFFF4F0FA), night: Color(0xFFFFFFFF), steel: Color(0xFFDCD3EC),
+    slate: Color(0xFF6E6489), mist: Color(0xFF1E1530),
+    accent: Color(0xFF9333EA), onAccent: Color(0xFFFFFFFF),
+  ),
+  AppPalette(
+    id: 'ambar_claro', name: 'Ámbar claro', light: true,
+    ink: Color(0xFFFBF6EC), night: Color(0xFFFFFFFF), steel: Color(0xFFE8DCC6),
+    slate: Color(0xFF7C6F5A), mist: Color(0xFF241C10),
+    accent: Color(0xFFB45309), onAccent: Color(0xFFFFFFFF),
+  ),
 ];
 
 /// Tema activo. La app se redibuja cuando cambia.
@@ -114,7 +160,10 @@ ThemeData buildTheme([AppPalette? palette]) {
       backgroundColor: p.night,
       indicatorColor: p.accent.withValues(alpha: 0.22),
     ),
-    colorScheme: ColorScheme.dark(
+    colorScheme: ColorScheme(
+      brightness: p.light ? Brightness.light : Brightness.dark,
+      error: p.light ? const Color(0xFFB91C1C) : const Color(0xFFF87171),
+      onError: p.light ? const Color(0xFFFFFFFF) : const Color(0xFF000000),
       primary: p.accent,
       onPrimary: p.onAccent,
       secondary: p.slate,
