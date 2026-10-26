@@ -96,11 +96,12 @@ class _DayPickerState extends State<DayPicker> {
                   overflow: TextOverflow.ellipsis),
             ]),
           ),
-          IconButton(
-            onPressed: _calendar,
-            icon: const Icon(Icons.calendar_month),
-            tooltip: 'Elegir otra fecha',
-          ),
+          if (widget.routineDays.isEmpty)
+            IconButton(
+              onPressed: _calendar,
+              icon: const Icon(Icons.calendar_month),
+              tooltip: 'Elegir otra fecha',
+            ),
         ]),
         const SizedBox(height: 8),
         Row(children: [
@@ -135,7 +136,7 @@ class _DayPickerState extends State<DayPicker> {
         borderRadius: BorderRadius.circular(12),
         child: InkWell(
           borderRadius: BorderRadius.circular(12),
-          onTap: () => widget.onChanged(key),
+          onTap: isRoutineDay ? () => widget.onChanged(key) : null,
           child: SizedBox(
             height: 60,
             child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
