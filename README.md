@@ -68,6 +68,3 @@ flutter run
 flutter test
 ```
 
-## Licencia
-
-Este proyecto no tiene licencia definida todavía. Si planeas hacer el repositorio público, considera agregar una (por ejemplo, MIT) para aclarar cómo otros pueden usar el código.
