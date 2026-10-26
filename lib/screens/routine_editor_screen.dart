@@ -5,10 +5,13 @@ import 'package:rutina_fit/screens/exercise_picker_screen.dart';
 import 'package:rutina_fit/widgets/exercise_info.dart';
 import 'package:rutina_fit/widgets/save_button.dart';
 
+const _diaLabels = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+
 class RoutineEditor extends StatefulWidget {
   final int? id;
   final String? name;
-  const RoutineEditor({super.key, this.id, this.name});
+  final String? daysRaw;
+  const RoutineEditor({super.key, this.id, this.name, this.daysRaw});
   @override
   State<RoutineEditor> createState() => _RoutineEditorState();
 }
@@ -16,12 +19,14 @@ class RoutineEditor extends StatefulWidget {
 class _RoutineEditorState extends State<RoutineEditor> {
   late final name = TextEditingController(text: widget.name ?? '');
   List<Ex> chosen = [];
+  Set<int> days = {};
   bool loading = true;
 
   @override
   void initState() {
     super.initState();
     name.addListener(() => setState(() {})); // activa o desactiva el botón Guardar
+    days = Db.parseDays(widget.daysRaw).toSet();
     _load();
   }
 
@@ -29,6 +34,14 @@ class _RoutineEditorState extends State<RoutineEditor> {
     if (widget.id != null) chosen = await Db.routineExercises(widget.id!);
     if (mounted) setState(() => loading = false);
   }
+
+  void _toggleDay(int d, bool on) => setState(() {
+        if (on) {
+          days.add(d);
+        } else {
+          days.remove(d);
+        }
+      });
 
   @override
   void dispose() {
@@ -58,7 +71,7 @@ class _RoutineEditorState extends State<RoutineEditor> {
       return;
     }
     try {
-      await Db.saveRoutine(widget.id, n, [for (final e in chosen) e.id]);
+      await Db.saveRoutine(widget.id, n, [for (final e in chosen) e.id], days.toList()..sort());
       if (mounted) Navigator.pop(context);
     } catch (e) {
       final dup = e.toString().contains('UNIQUE');
@@ -84,7 +97,7 @@ class _RoutineEditorState extends State<RoutineEditor> {
         : Column(
             children: [
               Padding(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
                 child: TextField(
                   controller: name,
                   textCapitalization: TextCapitalization.sentences,
@@ -92,6 +105,37 @@ class _RoutineEditorState extends State<RoutineEditor> {
                     labelText: 'Nombre (ej. Lunes pecho)',
                     border: OutlineInputBorder(),
                   ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Días de la semana (opcional)', style: TextStyle(fontSize: 12)),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        for (var i = 0; i < _diaLabels.length; i++)
+                          FilterChip(
+                            label: Text(_diaLabels[i]),
+                            showCheckmark: false,
+                            selected: days.contains(i + 1),
+                            onSelected: (v) => _toggleDay(i + 1, v),
+                          ),
+                      ],
+                    ),
+                    if (days.isNotEmpty)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 4),
+                        child: Text(
+                          'Se marcará en el calendario y avisará si entrenas otro día.',
+                          style: TextStyle(fontSize: 11),
+                        ),
+                      ),
+                  ],
                 ),
               ),
               Expanded(

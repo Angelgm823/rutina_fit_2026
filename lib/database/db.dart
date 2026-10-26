@@ -15,7 +15,7 @@ class Db {
 
   static Future<Database> get db async => _db ??= await openDatabase(
         p.join(await getDatabasesPath(), 'rutina.db'),
-        version: 6,
+        version: 7,
         onCreate: (d, v) async {
           await d.execute('''
             CREATE TABLE logs(
@@ -27,6 +27,7 @@ class Db {
         },
         onUpgrade: (d, o, n) async {
           if (o < 6) await _migrateTo6(d);
+          if (o < 7) await _migrateTo7(d);
         },
         // Cada vez que abre la app compara tu ejercicios.db con el último que importó.
         onOpen: _syncCatalog,
@@ -46,7 +47,7 @@ class Db {
     await d.execute('CREATE TABLE exercises(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE, '
         'category TEXT, sub TEXT, reps TEXT, tip TEXT, unit TEXT, custom INTEGER DEFAULT 0, '
         'equipment TEXT, descr TEXT, ext_id TEXT, active INTEGER DEFAULT 1)');
-    await d.execute('CREATE TABLE routines(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE)');
+    await d.execute('CREATE TABLE routines(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE, days TEXT)');
     await d.execute('CREATE TABLE routine_exercises(routine_id INTEGER, exercise_id INTEGER, '
         'position INTEGER, PRIMARY KEY(routine_id, exercise_id))');
     await d.execute('CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT)');
@@ -85,6 +86,17 @@ class Db {
         "WHEN 'Pierna' THEN 'Piernas y glúteos' WHEN 'Glúteo' THEN 'Piernas y glúteos' "
         "WHEN 'Gemelos' THEN 'Piernas y glúteos' WHEN 'Abdominales' THEN 'Abdomen' ELSE sub END WHERE custom = 1");
   }
+
+  /// Agrega a cada rutina los días de la semana en que se entrena (opcional, lo eliges al crearla o editarla).
+  static Future<void> _migrateTo7(Database d) async {
+    await _ensureColumn(d, 'routines', 'days', 'TEXT');
+  }
+
+  /// '1,3,5' -> [1, 3, 5] (1 = lunes ... 7 = domingo, como DateTime.weekday). Vacío o null = sin día fijo.
+  static List<int> parseDays(String? raw) =>
+      raw == null || raw.isEmpty ? [] : [for (final s in raw.split(',')) int.parse(s)];
+
+  static String? _daysToText(List<int> days) => days.isEmpty ? null : days.join(',');
 
   static String _fnv(Uint8List b) {
     var h = 0x811c9dc5;
@@ -234,8 +246,14 @@ class Db {
       });
 
   static Future<List<Map<String, Object?>>> routines() async => (await db).rawQuery(
-      'SELECT r.id, r.name, COUNT(re.exercise_id) AS n FROM routines r '
+      'SELECT r.id, r.name, r.days, COUNT(re.exercise_id) AS n FROM routines r '
       'LEFT JOIN routine_exercises re ON re.routine_id = r.id GROUP BY r.id ORDER BY r.id');
+
+  /// Días de la semana que eligió el usuario para esta rutina (vacío = sin restricción).
+  static Future<List<int>> routineDaysOf(int id) async {
+    final r = await (await db).query('routines', columns: ['days'], where: 'id = ?', whereArgs: [id], limit: 1);
+    return r.isEmpty ? [] : parseDays(r.first['days'] as String?);
+  }
 
   static Future<List<Ex>> routineExercises(int id) async => [
         for (final m in await (await db).rawQuery(
@@ -245,14 +263,14 @@ class Db {
           Ex.fromMap(m),
       ];
 
-  static Future<void> saveRoutine(int? id, String name, List<int> exerciseIds) async {
+  static Future<void> saveRoutine(int? id, String name, List<int> exerciseIds, [List<int> days = const []]) async {
     final d = await db;
     await d.transaction((t) async {
       var rid = id;
       if (rid == null) {
-        rid = await t.insert('routines', {'name': name});
+        rid = await t.insert('routines', {'name': name, 'days': _daysToText(days)});
       } else {
-        await t.update('routines', {'name': name}, where: 'id=?', whereArgs: [rid]);
+        await t.update('routines', {'name': name, 'days': _daysToText(days)}, where: 'id=?', whereArgs: [rid]);
         await t.delete('routine_exercises', where: 'routine_id=?', whereArgs: [rid]);
       }
       for (var i = 0; i < exerciseIds.length; i++) {
@@ -358,7 +376,7 @@ class Db {
           'SELECT e.name FROM routine_exercises re JOIN exercises e ON e.id = re.exercise_id '
           'WHERE re.routine_id = ? ORDER BY re.position',
           [r['id']]);
-      routines.add({'name': r['name'], 'exercises': [for (final e in exs) e['name']]});
+      routines.add({'name': r['name'], 'days': r['days'], 'exercises': [for (final e in exs) e['name']]});
     }
     return {
       'app': 'rutina_fit',
@@ -396,7 +414,7 @@ class Db {
           if (row.isNotEmpty && !ids.contains(row.first['id'])) ids.add(row.first['id'] as int);
         }
         final prev = await t.query('routines', columns: ['id'], where: 'name = ?', whereArgs: [name]);
-        final rid = prev.isEmpty ? await t.insert('routines', {'name': name}) : prev.first['id'] as int;
+        final rid = prev.isEmpty ? await t.insert('routines', {'name': name, 'days': r['days']}) : prev.first['id'] as int;
         await t.delete('routine_exercises', where: 'routine_id = ?', whereArgs: [rid]);
         for (var i = 0; i < ids.length; i++) {
           await t.insert('routine_exercises', {'routine_id': rid, 'exercise_id': ids[i], 'position': i});

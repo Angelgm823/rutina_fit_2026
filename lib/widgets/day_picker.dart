@@ -21,7 +21,9 @@ DateTime _today() {
 class DayPicker extends StatefulWidget {
   final String selected; // 'yyyy-MM-dd'
   final ValueChanged<String> onChanged;
-  const DayPicker({super.key, required this.selected, required this.onChanged});
+  /// Días de la semana (1 = lunes ... 7 = domingo) que se resaltan; vacío = todos por igual.
+  final Set<int> routineDays;
+  const DayPicker({super.key, required this.selected, required this.onChanged, this.routineDays = const {}});
 
   @override
   State<DayPicker> createState() => _DayPickerState();
@@ -123,7 +125,9 @@ class _DayPickerState extends State<DayPicker> {
     final key = dayKey(d);
     final selected = key == widget.selected;
     final isToday = d == today;
-    final fg = selected ? cOnAccent : cMist;
+    // Si la rutina tiene días fijos, los demás se muestran apagados: solo se "marcan" los suyos.
+    final isRoutineDay = widget.routineDays.isEmpty || widget.routineDays.contains(d.weekday);
+    final fg = selected ? cOnAccent : (isRoutineDay ? cMist : cMist.withValues(alpha: 0.35));
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 2),
       child: Material(
@@ -136,7 +140,11 @@ class _DayPickerState extends State<DayPicker> {
             height: 60,
             child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
               Text(_dias[d.weekday - 1].toUpperCase(),
-                  style: TextStyle(fontSize: 10, letterSpacing: 0.5, color: selected ? cOnAccent : cSlate)),
+                  style: TextStyle(
+                    fontSize: 10,
+                    letterSpacing: 0.5,
+                    color: selected ? cOnAccent : (isRoutineDay ? cSlate : cSlate.withValues(alpha: 0.4)),
+                  )),
               const SizedBox(height: 2),
               Text('${d.day}', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: fg)),
               const SizedBox(height: 3),

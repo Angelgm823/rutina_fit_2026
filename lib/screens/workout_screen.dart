@@ -84,7 +84,12 @@ class _WorkoutState extends State<Workout> {
           : ListView(
               padding: const EdgeInsets.all(12),
               children: [
-                DayPicker(selected: ctrl.date, onChanged: ctrl.changeDate),
+                DayPicker(
+                  selected: ctrl.date,
+                  onChanged: ctrl.changeDate,
+                  routineDays: ctrl.days.toSet(),
+                ),
+                if (ctrl.dayMismatch) _mismatchBanner(),
                 const SizedBox(height: 12),
                 for (final e in ctrl.exs) _card(e),
               ],
@@ -92,6 +97,35 @@ class _WorkoutState extends State<Workout> {
       bottomNavigationBar: _restBar(),
     ),
   );
+
+  /// Aviso cuando el día elegido no es uno de los días fijos de esta rutina.
+  Widget _mismatchBanner() {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.error.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: theme.colorScheme.error),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.info_outline, color: theme.colorScheme.error),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Este ejercicio no corresponde al día actual',
+                style: TextStyle(color: theme.colorScheme.error),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   Widget _card(Ex e) {
     final list = ctrl.rows[e.name]!;

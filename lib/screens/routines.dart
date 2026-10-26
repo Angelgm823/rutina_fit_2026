@@ -85,7 +85,11 @@ class _RoutinesScreenState extends State<RoutinesScreen> {
                     onTap: () => _open(Workout(r['id'] as int, r['name'] as String)),
                     trailing: PopupMenuButton<String>(
                       onSelected: (v) => v == 'edit'
-                          ? _open(RoutineEditor(id: r['id'] as int, name: r['name'] as String))
+                          ? _open(RoutineEditor(
+                              id: r['id'] as int,
+                              name: r['name'] as String,
+                              daysRaw: r['days'] as String?,
+                            ))
                           : _delete(r['id'] as int, r['name'] as String),
                       itemBuilder: (_) => const [
                         PopupMenuItem(value: 'edit', child: Text('Editar')),
