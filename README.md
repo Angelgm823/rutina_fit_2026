@@ -1,17 +1,70 @@
-# rutina_fit
+# Rutina Fit
 
-A new Flutter project.
+Aplicación Flutter para planear rutinas de ejercicio, registrar entrenamientos y llevar el progreso a lo largo del tiempo — todo de forma local, sin cuentas ni conexión a internet.
 
-## Getting Started
+## Características
 
-This project is a starting point for a Flutter application.
+- **Rutinas personalizadas**: crea y edita rutinas eligiendo ejercicios de una base de datos local con más de 300 ejercicios.
+- **Registro de entrenamientos**: lleva el control de series, repeticiones y peso durante la sesión, con temporizador de descanso.
+- **Modo cardio / bicicleta**: registro de sesiones de bicicleta estática con temporizador dedicado.
+- **Progreso**: gráficas de fuerza y cardio filtrables por año y trimestre (usa `syncfusion_flutter_charts`).
+- **Historial**: consulta de sesiones pasadas.
+- **Notificaciones**: avisos de temporizador que siguen funcionando aunque la app esté en segundo plano o la pantalla apagada.
+- **Exportar / importar**: respaldo de los datos y exportación de rutinas/progreso a PDF.
+- **Temas**: selector de tema claro/oscuro.
+- **Multiplataforma**: Android, iOS, web, Windows, macOS y Linux a partir de un único código base.
 
-A few resources to get you started if this is your first Flutter project:
+## Tecnologías
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+- [Flutter](https://flutter.dev) / Dart
+- `sqflite` — base de datos local (SQLite)
+- `syncfusion_flutter_charts` — gráficas de progreso
+- `flutter_local_notifications` + `timezone` — notificaciones programadas
+- `pdf` — generación de reportes en PDF
+- `file_picker` — respaldo e importación de datos
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## Estructura del proyecto
+
+```
+lib/
+├── controllers/   # Lógica de estado de cada pantalla (ChangeNotifier)
+├── database/      # Acceso a la base de datos SQLite
+├── models/        # Modelos de datos (ejercicios, etc.)
+├── screens/        # Pantallas de la app
+├── services/      # Notificaciones y otros servicios
+├── theme/         # Temas claro/oscuro
+├── utils/         # Utilidades (formato, etc.)
+└── widgets/       # Componentes reutilizables
+assets/
+├── db/            # Base de datos local de ejercicios
+├── fonts/         # Tipografías usadas en los PDF
+└── icon/          # Ícono de la app
+```
+
+## Primeros pasos
+
+### Requisitos
+
+- [Flutter SDK](https://docs.flutter.dev/get-started/install) (Dart ^3.13.4)
+- Un emulador/dispositivo, o navegador para la versión web
+
+### Instalación
+
+```bash
+git clone https://github.com/<tu-usuario>/rutina_fit_2026.git
+cd rutina_fit_2026
+flutter pub get
+```
+
+### Ejecutar
+
+```bash
+flutter run
+```
+
+### Pruebas
+
+```bash
+flutter test
+```
+

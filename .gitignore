@@ -50,3 +50,6 @@ app.*.map.json
 # iOS / CocoaPods: se regeneran al compilar para iOS (flutter build ios / pod install)
 /ios/Podfile
 /ios/Podfile.lock
+
+# Imágenes de referencia de ejercicios: no se usan en el código y no se publican en el repo
+/assets/ref/
