@@ -27,7 +27,11 @@ class WorkoutController extends ChangeNotifier {
   final rows = <String, List<SetData>>{};
   final hints = <String, String>{};
   List<Ex> exs = [];
+  List<int> days = []; // días de la semana asignados a esta rutina (vacío = sin restricción)
   bool loading = true;
+
+  /// true si esta rutina tiene días fijos y el día elegido no es uno de ellos.
+  bool get dayMismatch => days.isNotEmpty && !days.contains(DateTime.parse(date).weekday);
 
   int restTotal = 90;
   DateTime? restEnd; // hora en que termina el descanso: sigue siendo exacta aunque la app esté en segundo plano
@@ -64,6 +68,7 @@ class WorkoutController extends ChangeNotifier {
 
   Future<void> load() async {
     exs = await Db.routineExercises(routineId);
+    days = await Db.routineDaysOf(routineId);
     final saved = await Db.day(date, routine);
     for (final e in exs) {
       final mine = saved.where((x) => x['exercise'] == e.name).toList();
