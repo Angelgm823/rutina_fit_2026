@@ -363,6 +363,25 @@ class Db {
     return all;
   }
 
+  // ---------- Tops (mejores marcas) ----------
+
+  /// Top 3 sesiones de cardio más largas.
+  static Future<List<Map<String, Object?>>> topCardio({int limit = 3}) async =>
+      (await db).query('bike', orderBy: 'seconds DESC', limit: limit);
+
+  /// Top 3 series (por peso o resistencia) de cada ejercicio con al menos un registro.
+  static Future<Map<String, List<Map<String, Object?>>>> topWeights({int limit = 3}) async {
+    final d = await db;
+    final names = await d.rawQuery('SELECT DISTINCT exercise FROM logs WHERE done=1 AND weight>0 ORDER BY exercise');
+    final result = <String, List<Map<String, Object?>>>{};
+    for (final n in names) {
+      final name = n['exercise'] as String;
+      result[name] = await d.query('logs',
+          where: 'exercise=? AND done=1 AND weight>0', whereArgs: [name], orderBy: 'weight DESC, date DESC', limit: limit);
+    }
+    return result;
+  }
+
   // ---------- Respaldo (cambiar de dispositivo) ----------
   static const backupVersion = 1;
 

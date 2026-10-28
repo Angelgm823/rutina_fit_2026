@@ -7,7 +7,7 @@ class HomeController extends ChangeNotifier {
   int tab = 0;
   int gen = 0; // cambia tras importar un respaldo para recargar las pantallas
 
-  static const titles = ['Entrenar', 'Historial', 'Progreso'];
+  static const titles = ['Entrenar', 'Historial', 'Progreso', 'Tops'];
   String get title => titles[tab];
   bool get canDownload => tab == 1;
 
