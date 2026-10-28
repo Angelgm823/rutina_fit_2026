@@ -3,6 +3,7 @@ import 'package:rutina_fit/controllers/home_controller.dart';
 import 'package:rutina_fit/screens/history_screen.dart';
 import 'package:rutina_fit/screens/progress_screen.dart';
 import 'package:rutina_fit/screens/routines.dart';
+import 'package:rutina_fit/screens/tops_screen.dart';
 import 'package:rutina_fit/widgets/theme_picker.dart';
 
 class Home extends StatefulWidget {
@@ -72,7 +73,7 @@ class _HomeState extends State<Home> {
           ),
           body: KeyedSubtree(
             key: ValueKey(ctrl.gen),
-            child: [const RoutinesScreen(), const History(), const Progress()][ctrl.tab],
+            child: [const RoutinesScreen(), const History(), const Progress(), const Tops()][ctrl.tab],
           ),
           bottomNavigationBar: NavigationBar(
             selectedIndex: ctrl.tab,
@@ -81,6 +82,7 @@ class _HomeState extends State<Home> {
               NavigationDestination(icon: Icon(Icons.fitness_center), label: 'Entrenar'),
               NavigationDestination(icon: Icon(Icons.history), label: 'Historial'),
               NavigationDestination(icon: Icon(Icons.show_chart), label: 'Progreso'),
+              NavigationDestination(icon: Icon(Icons.emoji_events), label: 'Tops'),
             ],
           ),
         ),
