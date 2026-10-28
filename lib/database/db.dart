@@ -323,7 +323,7 @@ class Db {
       (await db).insert('bike', {'date': id, 'seconds': seconds, 'exercise': exercise});
 
   /// Sesión sin guardar = fecha sin hora; se ubica a las 8:00.
-  static DateTime _parse(String d) => DateTime.parse(d.length <= 10 ? '$d 08:00:00' : d);
+  static DateTime parseDate(String d) => DateTime.parse(d.length <= 10 ? '$d 08:00:00' : d);
 
   /// Mejor marca por sesión de un ejercicio: peso (o resistencia de liga) máximo,
   /// o los segundos máximos si es por tiempo.
@@ -333,21 +333,26 @@ class Db {
         'SELECT date, MAX($col) AS w FROM logs'
         ' WHERE exercise=? AND done=1 AND $col>0 GROUP BY date ORDER BY date',
         [ex]);
-    return [for (final r in rows) Pt(_parse(r['date'] as String), (r['w'] as num).toDouble())];
+    return [for (final r in rows) Pt(parseDate(r['date'] as String), (r['w'] as num).toDouble())];
   }
 
-  /// Fuerza: cuántos ejercicios distintos hiciste en cada sesión (con al menos una serie hecha).
+  /// Fuerza: repeticiones totales hechas en cada sesión.
   static Future<List<Pt>> strengthSeries() async {
     final rows = await (await db).rawQuery(
-        'SELECT date, COUNT(DISTINCT exercise) AS n FROM logs WHERE done=1 GROUP BY date ORDER BY date');
-    return [for (final r in rows) Pt(_parse(r['date'] as String), (r['n'] as num).toDouble())];
+        'SELECT date, SUM(reps) AS n FROM logs WHERE done=1 GROUP BY date ORDER BY date');
+    return [for (final r in rows) Pt(parseDate(r['date'] as String), (r['n'] as num).toDouble())];
   }
+
+  /// Fuerza detallada: repeticiones por ejercicio en cada sesión (para dividir la
+  /// barra de fuerza por color).
+  static Future<List<Map<String, Object?>>> strengthDetailRows() async => (await db).rawQuery(
+      'SELECT date, exercise, SUM(reps) AS n FROM logs WHERE done=1 GROUP BY date, exercise ORDER BY date');
 
   /// Minutos de cardio por sesión.
   static Future<List<Pt>> bikeSeries() async {
     final rows = await (await db).query('bike', orderBy: 'date');
     return [
-      for (final r in rows) Pt(_parse(r['date'] as String), (r['seconds'] as int) / 60),
+      for (final r in rows) Pt(parseDate(r['date'] as String), (r['seconds'] as int) / 60),
     ];
   }
 

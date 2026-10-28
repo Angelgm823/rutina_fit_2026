@@ -4,6 +4,7 @@ import 'package:syncfusion_flutter_charts/charts.dart'
         SfCartesianChart,
         LineSeries,
         ColumnSeries,
+        StackedColumnSeries,
         CategoryAxis,
         NumericAxis,
         AxisTitle,
@@ -13,11 +14,42 @@ import 'package:syncfusion_flutter_charts/charts.dart'
         TooltipBehavior,
         ChartTitle,
         ChartAlignment,
-        DataLabelSettings;
+        DataLabelSettings,
+        Legend,
+        LegendPosition,
+        LegendItemOverflowMode;
 import 'package:rutina_fit/controllers/progress_controller.dart';
 import 'package:rutina_fit/database/db.dart';
 import 'package:rutina_fit/theme/app_theme.dart';
 import 'package:rutina_fit/utils/format.dart';
+
+/// Paleta categórica para dividir la barra de fuerza por ejercicio (validada para
+/// buen contraste entre colores adyacentes, también para daltonismo). "Otros" usa
+/// el gris del tema en vez de un color de la paleta.
+const _catPaletteDark = [
+  Color(0xFF3987E5), // azul
+  Color(0xFFD95926), // naranja
+  Color(0xFF199E70), // aguamarina
+  Color(0xFFC98500), // amarillo
+  Color(0xFFD55181), // magenta
+  Color(0xFF008300), // verde
+  Color(0xFF9085E9), // violeta
+];
+const _catPaletteLight = [
+  Color(0xFF2A78D6),
+  Color(0xFFEB6834),
+  Color(0xFF1BAF7A),
+  Color(0xFFEDA100),
+  Color(0xFFE87BA4),
+  Color(0xFF008300),
+  Color(0xFF6250D6),
+];
+
+/// Rampa secuencial (un solo tono, claro→oscuro) para codificar magnitud: menos
+/// tiempo = más claro, más tiempo = más oscuro. Los dos tonos están dentro del
+/// rango que mantiene buen contraste tanto en temas claros como oscuros.
+const _seqLow = Color(0xFF86B6EF); // menos minutos
+const _seqHigh = Color(0xFF184F95); // más minutos
 
 class Progress extends StatefulWidget {
   const Progress({super.key});
@@ -83,6 +115,7 @@ class _ProgressState extends State<Progress> {
     required String Function(double) label,
     double? max,
     double? interval,
+    bool sequential = false, // colorea cada barra según su magnitud (menos→más)
   }) {
     final shown = ProgressController.lastSessions(d);
     final labels = ProgressController.labels(shown);
@@ -92,6 +125,9 @@ class _ProgressState extends State<Progress> {
       isVisible: shown.length <= 12, // con muchas sesiones las etiquetas se enciman
       textStyle: TextStyle(color: cMist, fontSize: 11),
     );
+    final minV = shown.map((p) => p.y).reduce((a, b) => a < b ? a : b);
+    final maxV = top;
+    Color seqColor(double v) => Color.lerp(_seqLow, _seqHigh, maxV == minV ? 1 : (v - minV) / (maxV - minV))!;
 
     return Column(
       children: [
@@ -143,6 +179,7 @@ class _ProgressState extends State<Progress> {
                   dataLabelMapper: (pt, _) => label(pt.y),
                   dataLabelSettings: dataLabels,
                   color: color,
+                  pointColorMapper: sequential ? (pt, _) => seqColor(pt.y) : null,
                   width: 0.4,
                   borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
                 ),
@@ -153,24 +190,77 @@ class _ProgressState extends State<Progress> {
     );
   }
 
-  /// Fuerza: ejercicios hechos por sesión.
+  /// Fuerza: repeticiones hechas por sesión, divididas por ejercicio.
   Widget _strengthSection(List<Pt> d) {
     final st = Stats.of(d);
-    return _section(Icons.fitness_center, 'Fuerza: ejercicios por sesión', 'Ejercicios con al menos una serie hecha', [
-      _chart(
-        d,
-        line: false,
-        unit: 'ejercicios',
-        color: cAccent,
-        label: (v) => fmt(v),
-        interval: 1,
-        stats: [
-          _stat('${st.sessions}', 'Sesiones'),
-          _stat(fmt(st.total), 'Ejercicios'),
-          _stat(_n1(st.average), 'Por sesión'),
+    return _section(Icons.fitness_center, 'Fuerza: repeticiones por sesión', 'Repeticiones por ejercicio en cada sesión', [
+      Row(children: [
+        _stat('${st.sessions}', 'Sesiones'),
+        _stat(fmt(st.total), 'Repeticiones'),
+        _stat(_n1(st.average), 'Por sesión'),
+      ]),
+      _strengthChart(d),
+    ]);
+  }
+
+  /// Barras apiladas: repeticiones por sesión, una franja de color por ejercicio.
+  Widget _strengthChart(List<Pt> d) {
+    final shown = ProgressController.lastSessions(d);
+    final labels = ProgressController.labels(shown);
+    final top = shown.map((pt) => pt.y).reduce((a, b) => a > b ? a : b);
+    final axisText = TextStyle(color: cSlate);
+    final categories = ctrl.strengthCategories;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final palette = dark ? _catPaletteDark : _catPaletteLight;
+    Color colorOf(int i, String cat) => cat == otrosCategoria ? cSlate : palette[i % palette.length];
+
+    return SizedBox(
+      height: 290,
+      child: SfCartesianChart(
+        plotAreaBorderWidth: 0,
+        title: ChartTitle(
+          text: shown.length < d.length
+              ? '${ctrl.period} · últimas ${ProgressController.maxSessions} sesiones'
+              : ctrl.period,
+          textStyle: axisText,
+          alignment: ChartAlignment.near,
+        ),
+        legend: Legend(
+          isVisible: categories.length > 1,
+          position: LegendPosition.bottom,
+          overflowMode: LegendItemOverflowMode.wrap,
+          textStyle: TextStyle(color: cMist, fontSize: 11),
+        ),
+        tooltipBehavior: TooltipBehavior(enable: true),
+        primaryXAxis: CategoryAxis(
+          labelStyle: axisText,
+          labelRotation: shown.length > 5 ? -45 : 0,
+          axisLine: AxisLine(color: cSteel),
+          majorGridLines: const MajorGridLines(width: 0),
+        ),
+        primaryYAxis: NumericAxis(
+          minimum: 0,
+          maximum: (top * 1.25).ceilToDouble(),
+          labelStyle: axisText,
+          title: AxisTitle(text: 'repeticiones', textStyle: axisText),
+          axisLine: const AxisLine(width: 0),
+          majorGridLines: MajorGridLines(color: cSteel, width: 0.5),
+        ),
+        series: [
+          for (var i = 0; i < categories.length; i++)
+            StackedColumnSeries<Pt, String>(
+              dataSource: shown,
+              xValueMapper: (pt, idx) => labels[idx],
+              yValueMapper: (pt, _) => ctrl.strengthDetail[pt.x]?[categories[i]] ?? 0,
+              name: categories[i],
+              color: colorOf(i, categories[i]),
+              width: 0.6,
+              borderColor: cNight,
+              borderWidth: shown.length <= 12 ? 2 : 1,
+            ),
         ],
       ),
-    ]);
+    );
   }
 
   /// Cardio: minutos por sesión.
@@ -181,7 +271,8 @@ class _ProgressState extends State<Progress> {
         d,
         line: false,
         unit: 'min',
-        color: cMist.withValues(alpha: 0.7),
+        color: _seqHigh,
+        sequential: true,
         label: (v) => _n1(v),
         stats: [
           _stat('${st.sessions}', 'Sesiones'),

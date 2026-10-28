@@ -10,14 +10,24 @@ class Stats {
   double get average => sessions == 0 ? 0 : total / sessions;
 }
 
+/// Categorías (ejercicios) que no están entre las más entrenadas se agrupan aquí.
+const otrosCategoria = 'Otros';
+
 /// Datos de la pantalla de progreso: series de fuerza y cardio, filtradas por año y trimestre.
 class ProgressController extends ChangeNotifier {
   static const maxSessions = 24; // sesiones visibles como máximo en cada gráfica
+  static const maxCategories = 7; // ejercicios con color propio; el resto cae en "Otros"
   static const _qNames = ['Año completo', 'T1 · Ene–Mar', 'T2 · Abr–Jun', 'T3 · Jul–Sep', 'T4 · Oct–Dic'];
 
   bool loaded = false;
-  List<Pt> strength = []; // ejercicios hechos por sesión
+  List<Pt> strength = []; // repeticiones hechas por sesión
   List<Pt> cardio = []; // minutos de cardio por sesión
+
+  // Repeticiones por ejercicio en cada sesión, y el orden fijo de categorías
+  // (ejercicios más entrenados del historial + "Otros"). El orden no cambia al
+  // cambiar de periodo, así cada ejercicio conserva siempre el mismo color.
+  Map<DateTime, Map<String, double>> strengthDetail = {};
+  List<String> strengthCategories = [];
 
   // Periodo: año + trimestre (0 = año completo). Por defecto, el trimestre actual.
   int year = DateTime.now().year;
@@ -39,13 +49,43 @@ class ProgressController extends ChangeNotifier {
   /// Carga (o recarga al arrastrar hacia abajo) las gráficas.
   Future<void> load() async {
     final s = await Db.strengthSeries();
+    final detail = await Db.strengthDetailRows();
     final b = await Db.bikeSeries();
     if (_disposed) return;
     strength = s;
     cardio = b;
+    _buildStrengthDetail(detail);
     loaded = true;
     notifyListeners();
   }
+
+  /// Agrupa las filas (fecha, ejercicio, repeticiones) por sesión y decide qué
+  /// ejercicios tienen color propio (los más entrenados en todo el historial);
+  /// el resto se suma en "Otros" para no saturar la gráfica de colores.
+  void _buildStrengthDetail(List<Map<String, Object?>> rows) {
+    final totals = <String, double>{};
+    for (final r in rows) {
+      final ex = r['exercise'] as String;
+      totals[ex] = (totals[ex] ?? 0) + (r['n'] as num).toDouble();
+    }
+    final ranked = totals.keys.toList()..sort((a, b) => totals[b]!.compareTo(totals[a]!));
+    final main = ranked.take(maxCategories).toSet();
+    strengthCategories = [...ranked.take(maxCategories), if (ranked.length > maxCategories) otrosCategoria];
+
+    final byDate = <DateTime, Map<String, double>>{};
+    for (final r in rows) {
+      final ex = r['exercise'] as String;
+      final cat = main.contains(ex) ? ex : otrosCategoria;
+      final reps = byDate.putIfAbsent(Db.parseDate(r['date'] as String), () => {});
+      reps[cat] = (reps[cat] ?? 0) + (r['n'] as num).toDouble();
+    }
+    strengthDetail = byDate;
+  }
+
+  /// Repeticiones de [category] en cada una de las sesiones dadas (0 si ese
+  /// ejercicio no se entrenó ese día).
+  List<double> categoryValues(String category, List<Pt> sessions) =>
+      [for (final pt in sessions) strengthDetail[pt.x]?[category] ?? 0];
 
   void prevYear() {
     year--;
