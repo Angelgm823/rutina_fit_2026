@@ -16,7 +16,7 @@ class TimerAlerts {
   static final _pending = <int, (DateTime, String, String)>{};
 
   // Un id por temporizador: el contador visible y el aviso final.
-  static const restRunning = 1, restDone = 2, cardioRunning = 3, cardioDone = 4;
+  static const restRunning = 1, restDone = 2, cardioRunning = 3, cardioDone = 4, plankRunning = 5, plankDone = 6;
 
   static const _icon = 'ic_stat_timer';
 

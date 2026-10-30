@@ -28,21 +28,35 @@ void main() {
     c.dispose();
   });
 
-  test('cronómetro: pausar acumula y la meta ya cumplida queda marcada', () async {
+  test('cuenta regresiva: pausar conserva lo que falta y guarda lo transcurrido', () async {
     final c = BikeController('Bicicleta estática');
-    c.toggle();
+    c.setTotal(2);
+    c.start();
     expect(c.running, isTrue);
     await Future.delayed(const Duration(milliseconds: 1100));
-    c.toggle();
+    c.pause();
     expect(c.running, isFalse);
-    expect(c.elapsed.inSeconds, 1);
+    expect(c.remaining, 1);
     expect(c.clock, '0:01');
 
-    c.setGoal(10);
-    expect(c.goalReached, isFalse);
-    c.reset();
-    expect(c.elapsed, Duration.zero);
+    c.setDate('2020-01-06');
+    expect(await c.save(), 1);
+    expect(c.total, 0);
     expect(await c.save(), 0, reason: 'sin tiempo no guarda');
+    c.dispose();
+  });
+
+  test('cuenta regresiva: al llegar a 0 sola, guardar sigue activo con los minutos programados', () async {
+    final c = BikeController('Bicicleta estática');
+    c.setTotal(1);
+    c.start();
+    await Future.delayed(const Duration(milliseconds: 1300));
+    expect(c.running, isFalse);
+    expect(c.remaining, 0);
+    expect(c.canSave, isTrue, reason: 'debe seguir activo al terminar, no desactivarse');
+
+    c.setDate('2020-01-06');
+    expect(await c.save(), 1);
     c.dispose();
   });
 }

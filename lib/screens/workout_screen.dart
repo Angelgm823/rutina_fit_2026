@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:rutina_fit/controllers/workout_controller.dart';
 import 'package:rutina_fit/models/exercises.dart';
+import 'package:rutina_fit/widgets/countdown_timer.dart';
 import 'package:rutina_fit/widgets/day_picker.dart';
 import 'package:rutina_fit/widgets/exercise_info.dart';
 import 'package:rutina_fit/widgets/save_button.dart';
@@ -181,10 +182,25 @@ class _WorkoutState extends State<Workout> {
           Checkbox(value: s.done, onChanged: (v) => ctrl.toggle(e, i, v ?? false)),
           Text('Serie ${i + 1}'),
           const SizedBox(width: 12),
-          // Plancha y similares: cronómetro. Liga: resistencia (1–3) en lugar del peso.
+          // Plancha y similares: solo el reloj para fijar los minutos y el cronómetro. Sin campo de texto.
           if (e.kind == Kind.timed) ...[
-            Expanded(child: _field(r, 'seg', (v) => ctrl.setReps(e, i, v))),
-            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                running
+                    ? (s.goal > 0 ? CountdownTimer.fmt(ctrl.clockRemaining) : '${s.r} s')
+                    : (s.goal > 0 ? CountdownTimer.fmt(s.goal) : 'Sin meta'),
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+            ),
+            const SizedBox(width: 4),
+            if (!running)
+              IconButton(
+                onPressed: () => _pickGoal(e, i, s),
+                icon: Icon(s.goal > 0 ? Icons.timer : Icons.timer_outlined),
+                tooltip: s.goal > 0 ? 'Meta: ${CountdownTimer.fmt(s.goal)}' : 'Poner meta de tiempo',
+              ),
+            const SizedBox(width: 4),
             IconButton.filledTonal(
               onPressed: () => ctrl.toggleClock(e, i),
               icon: Icon(running ? Icons.stop : Icons.play_arrow),
@@ -199,6 +215,45 @@ class _WorkoutState extends State<Workout> {
             Expanded(child: _field(r, e.unit, (v) => ctrl.setReps(e, i, v))),
           ],
         ],
+      ),
+    );
+  }
+
+  /// Hoja para fijar (o quitar) la meta de tiempo de una serie cronometrada, con un slider dinámico.
+  Future<void> _pickGoal(Ex e, int i, SetData s) async {
+    var val = s.goal;
+    await showModalBottomSheet(
+      context: context,
+      builder: (c) => StatefulBuilder(
+        builder: (c, setSheetState) => Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Meta de tiempo', style: Theme.of(c).textTheme.titleMedium),
+              const SizedBox(height: 4),
+              Text(
+                'Déjalo en 0 para aguantar sin límite.',
+                style: Theme.of(c).textTheme.bodySmall,
+                textAlign: TextAlign.center,
+              ),
+              CountdownTimer(
+                total: val,
+                remaining: val,
+                running: false,
+                maxSeconds: 300,
+                onTotalChanged: (v) => setSheetState(() => val = v),
+              ),
+              FilledButton(
+                onPressed: () {
+                  ctrl.setGoal(e, i, val);
+                  Navigator.pop(c);
+                },
+                child: const Text('Listo'),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

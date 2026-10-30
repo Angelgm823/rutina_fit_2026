@@ -14,6 +14,7 @@ class SetData {
   String w = '';
   String r = '';
   bool done = false;
+  int goal = 0; // meta en segundos para el cronómetro de esta serie (0 = sin meta, cuenta libre)
 }
 
 /// Estado y lógica de una sesión de rutina: series, descanso, cronómetro y guardado.
@@ -38,9 +39,19 @@ class WorkoutController extends ChangeNotifier {
   Timer? _restTicker;
 
   // Cronómetro de la serie en curso (ejercicios por tiempo, como la plancha).
+  // Sin meta: cuenta libre hacia arriba desde _clockStart. Con meta: cuenta regresiva hasta _clockEnd.
   SetData? clockRow;
   DateTime? _clockStart;
+  DateTime? _clockEnd;
   Timer? _clockTicker;
+
+  /// Segundos que faltan para la meta del cronómetro en curso (solo válido si clockRow tiene meta).
+  int get clockRemaining {
+    final end = _clockEnd;
+    if (end == null) return 0;
+    final ms = end.difference(DateTime.now()).inMilliseconds;
+    return ms <= 0 ? 0 : (ms / 1000).ceil();
+  }
 
   bool _disposed = false;
 
@@ -144,6 +155,14 @@ class WorkoutController extends ChangeNotifier {
     if (v) startRest();
   }
 
+  /// Meta (segundos) del cronómetro de una serie; 0 = sin meta, cuenta libre. Solo editable en reposo.
+  void setGoal(Ex e, int i, int secs) {
+    final s = rows[e.name]![i];
+    if (clockRow == s) return;
+    s.goal = secs;
+    _notify();
+  }
+
   /// Inicia o detiene el cronómetro de una serie; al detenerlo guarda los segundos y la marca hecha.
   void toggleClock(Ex e, int i) {
     final s = rows[e.name]![i];
@@ -155,20 +174,53 @@ class WorkoutController extends ChangeNotifier {
     _stopClock();
     stopRest();
     clockRow = s;
-    _clockStart = DateTime.now();
-    s.r = '0';
-    _notify();
-    _clockTicker = Timer.periodic(const Duration(seconds: 1), (_) {
-      s.r = '${DateTime.now().difference(_clockStart!).inSeconds}';
+    if (s.goal > 0) {
+      final goalSecs = s.goal;
+      _clockEnd = DateTime.now().add(Duration(seconds: goalSecs));
+      s.r = '0'; // segundos ya sostenidos (lo que se guarda); lo que falta se lee con clockRemaining
       _notify();
-    });
+      _notifyClock(e);
+      _clockTicker = Timer.periodic(const Duration(milliseconds: 250), (t) {
+        final left = clockRemaining;
+        s.r = '${goalSecs - left}';
+        if (left > 0) {
+          _notify();
+          return;
+        }
+        t.cancel();
+        _clockTicker = null;
+        clockRow = null;
+        _clockEnd = null;
+        HapticFeedback.heavyImpact();
+        SystemSound.play(SystemSoundType.alert);
+        toggle(e, i, true); // meta cumplida: marca la serie hecha y notifica
+      });
+    } else {
+      _clockStart = DateTime.now();
+      s.r = '0';
+      _notify();
+      _clockTicker = Timer.periodic(const Duration(seconds: 1), (_) {
+        s.r = '${DateTime.now().difference(_clockStart!).inSeconds}';
+        _notify();
+      });
+    }
+  }
+
+  /// Contador en la barra de notificaciones y aviso programado para cuando se cumpla la meta.
+  void _notifyClock(Ex e) {
+    final end = _clockEnd;
+    if (end == null) return;
+    TimerAlerts.showRunning(TimerAlerts.plankRunning, e.name, 'Toca para volver a la rutina', end: end);
+    TimerAlerts.scheduleDone(TimerAlerts.plankDone, end, '¡Meta cumplida!', '${e.name}: completaste la serie.');
   }
 
   void _stopClock() {
     _clockTicker?.cancel();
     _clockTicker = null;
+    _clockEnd = null;
     if (clockRow == null) return;
     clockRow = null;
+    TimerAlerts.cancel([TimerAlerts.plankRunning, TimerAlerts.plankDone]);
     _notify();
   }
 
@@ -267,6 +319,7 @@ class WorkoutController extends ChangeNotifier {
     _restTicker?.cancel();
     _clockTicker?.cancel();
     if (restEnd != null) TimerAlerts.cancel([TimerAlerts.restRunning, TimerAlerts.restDone]);
+    if (_clockEnd != null) TimerAlerts.cancel([TimerAlerts.plankRunning, TimerAlerts.plankDone]);
     super.dispose();
   }
 }
