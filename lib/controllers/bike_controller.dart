@@ -6,27 +6,43 @@ import 'package:rutina_fit/database/db.dart';
 import 'package:rutina_fit/services/notifications.dart';
 import 'package:rutina_fit/widgets/day_picker.dart' show dayKey;
 
-/// Estado y lógica de una sesión de cardio: cronómetro, meta, minutos a mano y guardado.
+/// Estado y lógica de una sesión de cardio: cuenta regresiva desde el tiempo elegido,
+/// minutos a mano y guardado.
 class BikeController extends ChangeNotifier {
   final String name;
   BikeController(this.name);
 
-  Duration acc = Duration.zero;
-  DateTime? startedAt;
+  int total = 0; // segundos elegidos (0 = aún sin elegir)
+  int _pausedRemaining = 0; // segundos que quedaban cuando se pausó
+  bool _finished = false; // llegó a 0 solo, sin pasar por pausa
+  DateTime? _end; // hora en que termina: exacta aunque la app esté en segundo plano
   Timer? _ticker;
   String manual = ''; // minutos escritos a mano (si no usaste el cronómetro)
   String date = dayKey(DateTime.now()); // puedes cambiarlo para registrar días pasados
-  int goal = 0; // meta en minutos (0 = sin meta); al llegar, avisa con una notificación
-  bool goalReached = false;
 
   bool _disposed = false;
 
-  bool get running => startedAt != null;
-  Duration get elapsed => acc + (startedAt == null ? Duration.zero : DateTime.now().difference(startedAt!));
-  bool get canSave => elapsed > Duration.zero || (int.tryParse(manual) ?? 0) > 0;
+  bool get running => _end != null;
+
+  /// true si salir perdería progreso (corriendo, pausado a medias o recién cumplido sin guardar).
+  bool get hasProgress => running || _pausedRemaining > 0 || _finished;
+
+  /// Segundos que faltan: mientras corre, pausado con tiempo pendiente, cumplido (0) o el total si no empezó.
+  int get remaining {
+    final end = _end;
+    if (end != null) {
+      final ms = end.difference(DateTime.now()).inMilliseconds;
+      return ms <= 0 ? 0 : (ms / 1000).ceil();
+    }
+    if (_finished) return 0;
+    return _pausedRemaining > 0 ? _pausedRemaining : total;
+  }
+
+  int get _elapsedSecs => total - remaining;
+  bool get canSave => _elapsedSecs > 0 || (int.tryParse(manual) ?? 0) > 0;
 
   String get clock {
-    final s = elapsed.inSeconds;
+    final s = remaining;
     return '${s ~/ 60}:${(s % 60).toString().padLeft(2, '0')}';
   }
 
@@ -44,57 +60,58 @@ class BikeController extends ChangeNotifier {
     _notify(); // activa o desactiva el botón Guardar
   }
 
-  void toggle() {
-    if (running) {
-      _ticker?.cancel();
-      acc = elapsed;
-      startedAt = null;
-      _notify();
-      _cancelAlerts();
-    } else {
-      startedAt = DateTime.now();
-      _ticker = Timer.periodic(const Duration(seconds: 1), (_) => _tick());
-      _notify();
-      _notifyRunning();
-    }
-  }
-
-  /// La hora sale de startedAt, así que el tiempo es exacto aunque la app haya estado en segundo plano.
-  void _tick() {
-    if (goal > 0 && !goalReached && elapsed.inSeconds >= goal * 60) {
-      goalReached = true;
-      HapticFeedback.heavyImpact();
-      SystemSound.play(SystemSoundType.alert);
-    }
+  /// Elige (o cambia) el tiempo total; solo mientras no corre.
+  void setTotal(int secs) {
+    if (running) return;
+    total = secs;
+    _pausedRemaining = 0;
+    _finished = false;
     _notify();
   }
 
-  /// Contador en la barra de notificaciones y, si hay meta, aviso programado para cuando la alcances.
-  void _notifyRunning() {
-    if (startedAt == null) return;
-    final from = DateTime.now().subtract(elapsed);
-    TimerAlerts.showRunning(
-      TimerAlerts.cardioRunning,
-      name,
-      goal > 0 ? 'Meta: $goal min' : 'Cronómetro en marcha',
-      start: from,
-    );
-    TimerAlerts.cancel([TimerAlerts.cardioDone]);
-    if (goal > 0 && !goalReached) {
-      TimerAlerts.scheduleDone(
-        TimerAlerts.cardioDone,
-        from.add(Duration(minutes: goal)),
-        '¡Meta alcanzada!',
-        '$name: llevas $goal min. Guarda tu sesión cuando termines.',
-      );
-    }
-  }
-
-  void setGoal(int m) {
-    goal = m;
-    goalReached = m > 0 && elapsed.inSeconds >= m * 60;
+  void start() {
+    if (running || total <= 0) return;
+    final secsLeft = _pausedRemaining > 0 ? _pausedRemaining : total;
+    _pausedRemaining = 0;
+    _finished = false;
+    _end = DateTime.now().add(Duration(seconds: secsLeft));
+    _ticker?.cancel();
     _notify();
     _notifyRunning();
+    _ticker = Timer.periodic(const Duration(milliseconds: 250), (t) {
+      if (remaining > 0) {
+        _notify();
+        return;
+      }
+      t.cancel();
+      _end = null;
+      _finished = true;
+      _notify();
+      HapticFeedback.heavyImpact();
+      SystemSound.play(SystemSoundType.alert);
+    });
+  }
+
+  void pause() {
+    if (!running) return;
+    _ticker?.cancel();
+    _pausedRemaining = remaining;
+    _end = null;
+    _notify();
+    _cancelAlerts();
+  }
+
+  /// Contador en la barra de notificaciones y aviso programado para cuando termine.
+  void _notifyRunning() {
+    final end = _end;
+    if (end == null) return;
+    TimerAlerts.showRunning(TimerAlerts.cardioRunning, name, 'Cuenta regresiva en marcha', end: end);
+    TimerAlerts.scheduleDone(
+      TimerAlerts.cardioDone,
+      end,
+      '¡Tiempo cumplido!',
+      '$name: terminaste tu sesión de cardio.',
+    );
   }
 
   void _cancelAlerts() => TimerAlerts.cancel([TimerAlerts.cardioRunning, TimerAlerts.cardioDone]);
@@ -103,17 +120,18 @@ class BikeController extends ChangeNotifier {
     _ticker?.cancel();
     _cancelAlerts();
     manual = '';
-    acc = Duration.zero;
-    startedAt = null;
-    goalReached = false;
+    total = 0;
+    _pausedRemaining = 0;
+    _finished = false;
+    _end = null;
     _notify();
   }
 
   /// Guarda la sesión y reinicia. Devuelve los segundos guardados (0 = nada que guardar).
   Future<int> save() async {
-    var secs = elapsed.inSeconds;
-    if (secs == 0) secs = (int.tryParse(manual) ?? 0) * 60;
-    if (secs == 0) return 0;
+    var secs = _elapsedSecs;
+    if (secs <= 0) secs = (int.tryParse(manual) ?? 0) * 60;
+    if (secs <= 0) return 0;
     final id = '$date ${DateTime.now().toIso8601String().substring(11, 19)}'; // día elegido + hora actual
     await Db.saveBike(id, secs, name);
     if (!_disposed) reset();
@@ -124,7 +142,7 @@ class BikeController extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     _ticker?.cancel();
-    if (startedAt != null) _cancelAlerts();
+    if (running) _cancelAlerts();
     super.dispose();
   }
 }

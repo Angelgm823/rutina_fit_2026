@@ -13,12 +13,13 @@ void main() {
     expect(save().onPressed, isNull);
     expect(bg(), cSteel);
 
-    await t.enterText(find.byType(TextField), '25');
+    final manual = find.byKey(const Key('manual_minutes'));
+    await t.enterText(manual, '25');
     await t.pump();
     expect(save().onPressed, isNotNull);
     expect(bg(), cGo);
 
-    await t.enterText(find.byType(TextField), '');
+    await t.enterText(manual, '');
     await t.pump();
     expect(save().onPressed, isNull);
   });

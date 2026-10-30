@@ -66,6 +66,29 @@ void main() {
     c.dispose();
   });
 
+  test('cronómetro con meta: cuenta regresiva y al llegar a 0 guarda lo sostenido y marca la serie', () async {
+    final d = await Db.db;
+    for (final t in ['logs', 'bike', 'routine_exercises', 'routines']) {
+      await d.delete(t);
+    }
+    final ex = (await Db.exercises()).firstWhere((e) => e.kind == Kind.timed);
+    await Db.saveRoutine(null, 'Core', [ex.id]);
+    final id = (await Db.routines()).first['id'] as int;
+
+    final c = WorkoutController(id, 'Core');
+    await c.load();
+
+    c.setGoal(ex, 0, 1); // meta de 1 segundo
+    c.toggleClock(ex, 0);
+    expect(c.clockRow, isNotNull);
+
+    await Future.delayed(const Duration(milliseconds: 1300));
+    expect(c.clockRow, isNull, reason: 'al cumplir la meta se detiene sola');
+    expect(c.rows[ex.name]![0].r, '1');
+    expect(c.rows[ex.name]![0].done, isTrue);
+    c.dispose();
+  });
+
   testWidgets('la vista refleja lo que escribe el usuario y lo limpia al guardar', (t) async {
     late int id;
     late Ex ex;
