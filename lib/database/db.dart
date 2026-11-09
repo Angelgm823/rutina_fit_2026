@@ -15,7 +15,7 @@ class Db {
 
   static Future<Database> get db async => _db ??= await openDatabase(
         p.join(await getDatabasesPath(), 'rutina.db'),
-        version: 7,
+        version: 8,
         onCreate: (d, v) async {
           await d.execute('''
             CREATE TABLE logs(
@@ -28,6 +28,7 @@ class Db {
         onUpgrade: (d, o, n) async {
           if (o < 6) await _migrateTo6(d);
           if (o < 7) await _migrateTo7(d);
+          if (o < 8) await _migrateTo8(d);
         },
         // Cada vez que abre la app compara tu ejercicios.db con el último que importó.
         onOpen: _syncCatalog,
@@ -46,7 +47,7 @@ class Db {
   static Future<void> _createLibrary(Database d) async {
     await d.execute('CREATE TABLE exercises(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE, '
         'category TEXT, sub TEXT, reps TEXT, tip TEXT, unit TEXT, custom INTEGER DEFAULT 0, '
-        'equipment TEXT, descr TEXT, ext_id TEXT, active INTEGER DEFAULT 1)');
+        'equipment TEXT, descr TEXT, ext_id TEXT, active INTEGER DEFAULT 1, deleted INTEGER DEFAULT 0)');
     await d.execute('CREATE TABLE routines(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE, days TEXT)');
     await d.execute('CREATE TABLE routine_exercises(routine_id INTEGER, exercise_id INTEGER, '
         'position INTEGER, PRIMARY KEY(routine_id, exercise_id))');
@@ -90,6 +91,12 @@ class Db {
   /// Agrega a cada rutina los días de la semana en que se entrena (opcional, lo eliges al crearla o editarla).
   static Future<void> _migrateTo7(Database d) async {
     await _ensureColumn(d, 'routines', 'days', 'TEXT');
+  }
+
+  /// Soft delete de ejercicios: distinto de `active` (que usa el sincronizado de catálogo), así
+  /// un ejercicio que borras tú no vuelve a aparecer aunque tu ejercicios.db lo siga incluyendo.
+  static Future<void> _migrateTo8(Database d) async {
+    await _ensureColumn(d, 'exercises', 'deleted', 'INTEGER DEFAULT 0');
   }
 
   /// '1,3,5' -> [1, 3, 5] (1 = lunes ... 7 = domingo, como DateTime.weekday). Vacío o null = sin día fijo.
@@ -185,20 +192,71 @@ class Db {
 
   // ---------- Catálogo y rutinas ----------
   static const _exCols = ['id', 'name', 'category', 'sub', 'reps', 'tip', 'unit', 'custom', 'equipment', 'descr'];
+  static const _manageCols = [..._exCols, 'active', 'deleted'];
 
-  /// Ejercicios para armar rutinas (sin cardio y sin los ocultos).
+  /// Ejercicios para armar rutinas (sin cardio, sin los ocultos y sin los que borraste).
   static Future<List<Ex>> exercises() async => [
         for (final m in await (await db).query('exercises',
-            columns: _exCols, where: "active = 1 AND category <> 'Cardio'", orderBy: 'category, sub, name'))
+            columns: _exCols, where: "active = 1 AND deleted = 0 AND category <> 'Cardio'", orderBy: 'category, sub, name'))
           Ex.fromMap(m),
       ];
 
   /// Ejercicios de cardio de tu base (bicicleta, caminadora...).
   static Future<List<Ex>> cardio() async => [
         for (final m in await (await db).query('exercises',
-            columns: _exCols, where: "active = 1 AND category = 'Cardio'", orderBy: 'id'))
+            columns: _exCols, where: "active = 1 AND deleted = 0 AND category = 'Cardio'", orderBy: 'id'))
           Ex.fromMap(m),
       ];
+
+  /// Todos los ejercicios (propios y del catálogo, visibles y eliminados) para la pantalla de gestión.
+  static Future<List<Map<String, Object?>>> allExercises() async =>
+      (await db).query('exercises', columns: _manageCols, orderBy: 'category, sub, name');
+
+  /// Edita todos los campos de un ejercicio. Si lo renombras, tu historial de sesiones sigue
+  /// ligado al nombre anterior (igual que el sincronizado de catálogo).
+  static Future<void> updateExercise(
+    int id, {
+    required String name,
+    required String group,
+    required String reps,
+    required String unit,
+    required String equipment,
+    required String descr,
+    required String tip,
+  }) async =>
+      (await db).update(
+        'exercises',
+        {
+          'name': name,
+          'category': categoryOf(group),
+          'sub': group,
+          'reps': reps,
+          'unit': unit,
+          'equipment': equipment,
+          'descr': descr,
+          'tip': tip,
+        },
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+
+  /// Oculta el ejercicio (de rutinas nuevas y del selector de cardio) sin borrarlo. Reversible.
+  static Future<void> softDeleteExercise(int id) async =>
+      (await db).update('exercises', {'deleted': 1}, where: 'id = ?', whereArgs: [id]);
+
+  /// Deshace un soft delete.
+  static Future<void> restoreExercise(int id) async =>
+      (await db).update('exercises', {'deleted': 0}, where: 'id = ?', whereArgs: [id]);
+
+  /// Borra el ejercicio definitivamente de la base. No se puede deshacer: se quita también de
+  /// las rutinas que lo usaban (el historial de sesiones ya guardadas conserva el nombre, no el id).
+  static Future<void> hardDeleteExercise(int id) async {
+    final d = await db;
+    await d.transaction((t) async {
+      await t.delete('routine_exercises', where: 'exercise_id = ?', whereArgs: [id]);
+      await t.delete('exercises', where: 'id = ?', whereArgs: [id]);
+    });
+  }
 
   /// Ejercicios con al menos una serie guardada (para la pantalla Progreso).
   static Future<List<String>> loggedExercises() async => [
@@ -231,7 +289,8 @@ class Db {
   }
 
   /// Crea un ejercicio propio. Lanza error si el nombre ya existe.
-  static Future<int> addExercise(String name, String group, String reps, String unit) async =>
+  static Future<int> addExercise(String name, String group, String reps, String unit,
+          [String descr = '']) async =>
       (await db).insert('exercises', {
         'name': name,
         'category': categoryOf(group),
@@ -241,7 +300,7 @@ class Db {
         'unit': unit,
         'custom': 1,
         'equipment': '',
-        'descr': '',
+        'descr': descr,
         'active': 1,
       });
 

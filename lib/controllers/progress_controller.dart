@@ -23,11 +23,13 @@ class ProgressController extends ChangeNotifier {
   List<Pt> strength = []; // repeticiones hechas por sesión
   List<Pt> cardio = []; // minutos de cardio por sesión
 
-  // Repeticiones por ejercicio en cada sesión, y el orden fijo de categorías
-  // (ejercicios más entrenados del historial + "Otros"). El orden no cambia al
-  // cambiar de periodo, así cada ejercicio conserva siempre el mismo color.
+  // Repeticiones por ejercicio en cada sesión, y el orden de categorías (los
+  // ejercicios más entrenados del periodo visible + "Otros"). Se recalcula al
+  // cambiar de año/trimestre: así un ejercicio propio que entrenas seguido
+  // consigue color aunque tu historial completo lo tenga poco usado.
   Map<DateTime, Map<String, double>> strengthDetail = {};
   List<String> strengthCategories = [];
+  List<Map<String, Object?>> _detailRows = [];
 
   // Periodo: año + trimestre (0 = año completo). Por defecto, el trimestre actual.
   int year = DateTime.now().year;
@@ -54,15 +56,21 @@ class ProgressController extends ChangeNotifier {
     if (_disposed) return;
     strength = s;
     cardio = b;
-    _buildStrengthDetail(detail);
+    _detailRows = detail;
+    _buildStrengthDetail();
     loaded = true;
     notifyListeners();
   }
 
-  /// Agrupa las filas (fecha, ejercicio, repeticiones) por sesión y decide qué
-  /// ejercicios tienen color propio (los más entrenados en todo el historial);
-  /// el resto se suma en "Otros" para no saturar la gráfica de colores.
-  void _buildStrengthDetail(List<Map<String, Object?>> rows) {
+  bool _inPeriodDate(DateTime d) => d.year == year && (quarter == 0 || (d.month - 1) ~/ 3 + 1 == quarter);
+
+  /// Agrupa por sesión las filas (fecha, ejercicio, repeticiones) del periodo visible y decide
+  /// qué ejercicios tienen color propio (los más entrenados en ese periodo); el resto se suma en
+  /// "Otros". Se recalcula cada vez que cambia el periodo, para que el color siga lo que de verdad
+  /// estás entrenando ahora y no solo el acumulado histórico.
+  void _buildStrengthDetail() {
+    final rows = [for (final r in _detailRows) if (_inPeriodDate(Db.parseDate(r['date'] as String))) r];
+
     final totals = <String, double>{};
     for (final r in rows) {
       final ex = r['exercise'] as String;
@@ -89,17 +97,20 @@ class ProgressController extends ChangeNotifier {
 
   void prevYear() {
     year--;
+    _buildStrengthDetail();
     notifyListeners();
   }
 
   void nextYear() {
     if (!canNextYear) return;
     year++;
+    _buildStrengthDetail();
     notifyListeners();
   }
 
   void setQuarter(int q) {
     quarter = q;
+    _buildStrengthDetail();
     notifyListeners();
   }
 
