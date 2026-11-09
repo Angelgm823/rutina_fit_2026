@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:rutina_fit/controllers/home_controller.dart';
 import 'package:rutina_fit/screens/history_screen.dart';
+import 'package:rutina_fit/screens/manage_exercises_screen.dart';
 import 'package:rutina_fit/screens/progress_screen.dart';
 import 'package:rutina_fit/screens/routines.dart';
 import 'package:rutina_fit/screens/tops_screen.dart';
@@ -30,6 +31,7 @@ class _HomeState extends State<Home> {
 
   void _onMenu(String v) => switch (v) {
         'theme' => showThemePicker(context),
+        'manage' => Navigator.push(context, MaterialPageRoute(builder: (_) => const ManageExercisesScreen())),
         'export' => _run(ctrl.exportBackupFile),
         _ => _run(ctrl.importBackupFile),
       };
@@ -58,6 +60,10 @@ class _HomeState extends State<Home> {
                   PopupMenuItem(
                     value: 'theme',
                     child: ListTile(leading: Icon(Icons.palette_outlined), title: Text('Tema')),
+                  ),
+                  PopupMenuItem(
+                    value: 'manage',
+                    child: ListTile(leading: Icon(Icons.edit_note), title: Text('Gestionar ejercicios')),
                   ),
                   PopupMenuItem(
                     value: 'export',

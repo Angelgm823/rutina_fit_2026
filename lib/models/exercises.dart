@@ -62,11 +62,11 @@ const groups = <String, String>{
   'Espalda': 'Superior',
   'Brazos': 'Superior',
   'Hombros': 'Superior',
-  'Abdomen': 'Superior',
+  'Abdomen': 'Medio',
   'Piernas y glúteos': 'Inferior',
 };
 
-const categories = ['Superior', 'Inferior'];
+const categories = ['Superior', 'Inferior', 'Medio'];
 
 String categoryOf(String group) => group == cardioGroup ? 'Cardio' : (groups[group] ?? 'Superior');
 

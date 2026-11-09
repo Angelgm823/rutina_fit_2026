@@ -54,6 +54,7 @@ class _ExercisePickerState extends State<ExercisePicker> {
   Future<void> _newExercise() async {
     final name = TextEditingController();
     final reps = TextEditingController(text: '8–12');
+    final descr = TextEditingController();
     var subSel = sub != 'Todas' ? sub : groups.keys.first;
     var unit = 'reps';
     final ok = await showDialog<bool>(
@@ -82,9 +83,18 @@ class _ExercisePickerState extends State<ExercisePicker> {
                 value: unit,
                 items: const [
                   DropdownMenuItem(value: 'reps', child: Text('Se mide en repeticiones')),
-                  DropdownMenuItem(value: 'seg', child: Text('Se mide en segundos')),
+                  DropdownMenuItem(value: 'seg', child: Text('Se mide en tiempo (segundos)')),
                 ],
                 onChanged: (v) => set(() => unit = v ?? unit),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: descr,
+                maxLines: 3,
+                decoration: const InputDecoration(
+                  labelText: 'Cómo se hace (opcional)',
+                  alignLabelWithHint: true,
+                ),
               ),
             ]),
           ),
@@ -97,8 +107,8 @@ class _ExercisePickerState extends State<ExercisePicker> {
     );
     if (ok != true || name.text.trim().isEmpty) return;
     try {
-      final id = await Db.addExercise(
-          name.text.trim(), subSel, reps.text.trim().isEmpty ? '8–12' : reps.text.trim(), unit);
+      final id = await Db.addExercise(name.text.trim(), subSel,
+          reps.text.trim().isEmpty ? '8–12' : reps.text.trim(), unit, descr.text.trim());
       await _load();
       setState(() => order.add(id));
     } catch (_) {
