@@ -202,7 +202,6 @@ class _ManageExercisesScreenState extends State<ManageExercisesScreen> {
   Widget build(BuildContext c) => ListenableBuilder(
         listenable: ctrl,
         builder: (c, _) {
-          final list = _shown;
           return Scaffold(
             appBar: AppBar(title: const Text('Gestionar ejercicios')),
             body: !ctrl.loaded

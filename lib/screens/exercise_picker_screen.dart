@@ -136,7 +136,6 @@ class _ExercisePickerState extends State<ExercisePicker> {
 
   @override
   Widget build(BuildContext c) {
-    final list = shown;
     return Scaffold(
       appBar: AppBar(
         title: const Text('Elegir ejercicios'),
