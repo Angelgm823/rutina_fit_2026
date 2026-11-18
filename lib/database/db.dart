@@ -15,7 +15,7 @@ class Db {
 
   static Future<Database> get db async => _db ??= await openDatabase(
         p.join(await getDatabasesPath(), 'rutina.db'),
-        version: 8,
+        version: 9,
         onCreate: (d, v) async {
           await d.execute('''
             CREATE TABLE logs(
@@ -29,6 +29,7 @@ class Db {
           if (o < 6) await _migrateTo6(d);
           if (o < 7) await _migrateTo7(d);
           if (o < 8) await _migrateTo8(d);
+          if (o < 9) await _migrateTo9(d);
         },
         // Cada vez que abre la app compara tu ejercicios.db con el último que importó.
         onOpen: _syncCatalog,
@@ -47,7 +48,8 @@ class Db {
   static Future<void> _createLibrary(Database d) async {
     await d.execute('CREATE TABLE exercises(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE, '
         'category TEXT, sub TEXT, reps TEXT, tip TEXT, unit TEXT, custom INTEGER DEFAULT 0, '
-        'equipment TEXT, descr TEXT, ext_id TEXT, active INTEGER DEFAULT 1, deleted INTEGER DEFAULT 0)');
+        'equipment TEXT, descr TEXT, ext_id TEXT, active INTEGER DEFAULT 1, deleted INTEGER DEFAULT 0, '
+        'location TEXT DEFAULT "GYM")');
     await d.execute('CREATE TABLE routines(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE, days TEXT)');
     await d.execute('CREATE TABLE routine_exercises(routine_id INTEGER, exercise_id INTEGER, '
         'position INTEGER, PRIMARY KEY(routine_id, exercise_id))');
@@ -97,6 +99,11 @@ class Db {
   /// un ejercicio que borras tú no vuelve a aparecer aunque tu ejercicios.db lo siga incluyendo.
   static Future<void> _migrateTo8(Database d) async {
     await _ensureColumn(d, 'exercises', 'deleted', 'INTEGER DEFAULT 0');
+  }
+
+  /// Agregar columna `location` para distinguir ejercicios de GYM vs CASA.
+  static Future<void> _migrateTo9(Database d) async {
+    await _ensureColumn(d, 'exercises', 'location', 'TEXT DEFAULT "GYM"');
   }
 
   /// '1,3,5' -> [1, 3, 5] (1 = lunes ... 7 = domingo, como DateTime.weekday). Vacío o null = sin día fijo.
@@ -191,7 +198,7 @@ class Db {
   }
 
   // ---------- Catálogo y rutinas ----------
-  static const _exCols = ['id', 'name', 'category', 'sub', 'reps', 'tip', 'unit', 'custom', 'equipment', 'descr'];
+  static const _exCols = ['id', 'name', 'category', 'sub', 'reps', 'tip', 'unit', 'custom', 'equipment', 'descr', 'location'];
   static const _manageCols = [..._exCols, 'active', 'deleted'];
 
   /// Ejercicios para armar rutinas (sin cardio, sin los ocultos y sin los que borraste).
@@ -223,6 +230,7 @@ class Db {
     required String equipment,
     required String descr,
     required String tip,
+    String location = 'GYM',
   }) async =>
       (await db).update(
         'exercises',
@@ -235,6 +243,7 @@ class Db {
           'equipment': equipment,
           'descr': descr,
           'tip': tip,
+          'location': location,
         },
         where: 'id = ?',
         whereArgs: [id],
@@ -290,7 +299,7 @@ class Db {
 
   /// Crea un ejercicio propio. Lanza error si el nombre ya existe.
   static Future<int> addExercise(String name, String group, String reps, String unit,
-          [String descr = '']) async =>
+          [String descr = '', String location = 'GYM']) async =>
       (await db).insert('exercises', {
         'name': name,
         'category': categoryOf(group),
@@ -302,6 +311,7 @@ class Db {
         'equipment': '',
         'descr': descr,
         'active': 1,
+        'location': location,
       });
 
   static Future<List<Map<String, Object?>>> routines() async => (await db).rawQuery(
@@ -466,7 +476,7 @@ class Db {
       'version': backupVersion,
       'created': DateTime.now().toIso8601String(),
       'custom_exercises': await d.query('exercises',
-          columns: ['name', 'category', 'sub', 'reps', 'tip', 'unit', 'equipment', 'descr'], where: 'custom = 1'),
+          columns: ['name', 'category', 'sub', 'reps', 'tip', 'unit', 'equipment', 'descr', 'location'], where: 'custom = 1'),
       'routines': routines,
       'logs': await d.query('logs'),
       'bike': await d.query('bike', columns: ['date', 'seconds', 'exercise']),
@@ -485,7 +495,9 @@ class Db {
     var bikes = 0, routines = 0;
     await d.transaction((t) async {
       for (final e in (data['custom_exercises'] as List? ?? const [])) {
-        await t.insert('exercises', {...Map<String, Object?>.from(e as Map), 'custom': 1, 'active': 1},
+        final exData = Map<String, Object?>.from(e as Map);
+        exData['location'] ??= 'GYM';
+        await t.insert('exercises', {...exData, 'custom': 1, 'active': 1},
             conflictAlgorithm: ConflictAlgorithm.ignore);
       }
 
