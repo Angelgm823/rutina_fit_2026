@@ -13,7 +13,7 @@ class ExercisePicker extends StatefulWidget {
 class _ExercisePickerState extends State<ExercisePicker> {
   List<Ex> all = [];
   late final List<int> order = [for (final e in widget.selected) e.id]; // orden de selección
-  String cat = 'Todos', sub = 'Todas', query = '';
+  String cat = 'Todos', sub = 'Todas', query = '', location = 'Todos';
   bool loading = true;
 
   @override
@@ -38,6 +38,7 @@ class _ExercisePickerState extends State<ExercisePicker> {
       for (final e in all)
         if ((cat == 'Todos' || e.category == cat) &&
             (sub == 'Todas' || e.sub == sub) &&
+            (location == 'Todos' || (location == 'GYM' && e.locationId == 1) || (location == 'CASA' && e.locationId == 2)) &&
             (q.isEmpty || e.name.toLowerCase().contains(q) || e.equipment.toLowerCase().contains(q)))
           e,
     ];
@@ -158,6 +159,19 @@ class _ExercisePickerState extends State<ExercisePicker> {
                     cat = v.first;
                     sub = 'Todas';
                   }),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+                child: SegmentedButton<String>(
+                  showSelectedIcon: false,
+                  segments: const [
+                    ButtonSegment(value: 'Todos', label: Text('Todos')),
+                    ButtonSegment(value: 'GYM', label: Text('GYM')),
+                    ButtonSegment(value: 'CASA', label: Text('CASA')),
+                  ],
+                  selected: {location},
+                  onSelectionChanged: (v) => setState(() => location = v.first),
                 ),
               ),
               SizedBox(
