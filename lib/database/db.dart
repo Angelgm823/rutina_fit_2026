@@ -15,7 +15,7 @@ class Db {
 
   static Future<Database> get db async => _db ??= await openDatabase(
         p.join(await getDatabasesPath(), 'rutina.db'),
-        version: 10,
+        version: 11,
         onCreate: (d, v) async {
           await d.execute('''
             CREATE TABLE logs(
@@ -31,6 +31,7 @@ class Db {
           if (o < 8) await _migrateTo8(d);
           if (o < 9) await _migrateTo9(d);
           if (o < 10) await _migrateTo10(d);
+          if (o < 11) await _migrateTo11(d);
         },
         // Cada vez que abre la app compara tu ejercicios.db con el último que importó.
         onOpen: _syncCatalog,
@@ -137,6 +138,11 @@ class Db {
     // La columna se queda pero location_id es la fuente de verdad
   }
 
+  /// Forzar resincronización del catálogo para actualizar location_id desde el catálogo.
+  static Future<void> _migrateTo11(Database d) async {
+    await d.delete('meta', where: "key = 'catalog_hash'");
+  }
+
   /// '1,3,5' -> [1, 3, 5] (1 = lunes ... 7 = domingo, como DateTime.weekday). Vacío o null = sin día fijo.
   static List<int> parseDays(String? raw) =>
       raw == null || raw.isEmpty ? [] : [for (final s in raw.split(',')) int.parse(s)];
@@ -167,7 +173,7 @@ class Db {
       await File(tmp).writeAsBytes(bytes, flush: true);
       final src = await openDatabase(tmp, readOnly: true);
       final rows = await src.rawQuery(
-          'SELECT e.id, e.nombre, e.equipo, e.descripcion, g.nombre AS grupo '
+          'SELECT e.id, e.nombre, e.equipo, e.descripcion, e.location_id, g.nombre AS grupo '
           'FROM ejercicios e JOIN grupos_musculares g ON g.id = e.grupo_id ORDER BY e.id');
       await src.close();
       await File(tmp).delete();
@@ -189,6 +195,7 @@ class Db {
             'ext_id': extId,
             'custom': 0,
             'active': 1,
+            'location_id': (r['location_id'] as int?) ?? 1,
           };
           seen.add(extId);
 
