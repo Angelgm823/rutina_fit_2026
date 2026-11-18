@@ -15,7 +15,7 @@ class Db {
 
   static Future<Database> get db async => _db ??= await openDatabase(
         p.join(await getDatabasesPath(), 'rutina.db'),
-        version: 8,
+        version: 12,
         onCreate: (d, v) async {
           await d.execute('''
             CREATE TABLE logs(
@@ -29,6 +29,10 @@ class Db {
           if (o < 6) await _migrateTo6(d);
           if (o < 7) await _migrateTo7(d);
           if (o < 8) await _migrateTo8(d);
+          if (o < 9) await _migrateTo9(d);
+          if (o < 10) await _migrateTo10(d);
+          if (o < 11) await _migrateTo11(d);
+          if (o < 12) await _migrateTo12(d);
         },
         // Cada vez que abre la app compara tu ejercicios.db con el último que importó.
         onOpen: _syncCatalog,
@@ -45,9 +49,12 @@ class Db {
       (await db).insert('meta', {'key': key, 'value': value}, conflictAlgorithm: ConflictAlgorithm.replace);
 
   static Future<void> _createLibrary(Database d) async {
+    await d.execute('CREATE TABLE locations(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE NOT NULL)');
+    await d.execute('INSERT INTO locations(name) VALUES("GYM"), ("CASA")');
     await d.execute('CREATE TABLE exercises(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE, '
         'category TEXT, sub TEXT, reps TEXT, tip TEXT, unit TEXT, custom INTEGER DEFAULT 0, '
-        'equipment TEXT, descr TEXT, ext_id TEXT, active INTEGER DEFAULT 1, deleted INTEGER DEFAULT 0)');
+        'equipment TEXT, descr TEXT, ext_id TEXT, active INTEGER DEFAULT 1, deleted INTEGER DEFAULT 0, '
+        'location_id INTEGER DEFAULT 1, FOREIGN KEY(location_id) REFERENCES locations(id))');
     await d.execute('CREATE TABLE routines(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE, days TEXT)');
     await d.execute('CREATE TABLE routine_exercises(routine_id INTEGER, exercise_id INTEGER, '
         'position INTEGER, PRIMARY KEY(routine_id, exercise_id))');
@@ -99,6 +106,49 @@ class Db {
     await _ensureColumn(d, 'exercises', 'deleted', 'INTEGER DEFAULT 0');
   }
 
+  /// Agregar columna `location` para distinguir ejercicios de GYM vs CASA.
+  static Future<void> _migrateTo9(Database d) async {
+    await _ensureColumn(d, 'exercises', 'location', 'TEXT DEFAULT "GYM"');
+  }
+
+  /// Refactorizar location: de columna a tabla de relación.
+  static Future<void> _migrateTo10(Database d) async {
+    // Crear tabla de locations si no existe
+    final tables = await d.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='locations'");
+    if (tables.isEmpty) {
+      await d.execute('CREATE TABLE locations(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE NOT NULL)');
+      await d.execute('INSERT INTO locations(name) VALUES("GYM"), ("CASA")');
+    }
+
+    // Agregar columna location_id si no existe
+    await _ensureColumn(d, 'exercises', 'location_id', 'INTEGER DEFAULT 1');
+
+    // Migrar datos: actualizar location_id basándose en la columna location anterior
+    final exercises = await d.query('exercises',
+        columns: ['id', 'location']);
+    for (final ex in exercises) {
+      final id = ex['id'] as int;
+      final location = (ex['location'] as String?) ?? 'GYM';
+      final locationId = location == 'CASA' ? 2 : 1;
+      await d.update('exercises', {'location_id': locationId},
+          where: 'id = ?', whereArgs: [id]);
+    }
+
+    // Eliminar columna location antigua (SQLite no soporta DROP COLUMN directamente en versiones viejas)
+    // La columna se queda pero location_id es la fuente de verdad
+  }
+
+  /// Forzar resincronización del catálogo para actualizar location_id desde el catálogo.
+  static Future<void> _migrateTo11(Database d) async {
+    await d.delete('meta', where: "key = 'catalog_hash'");
+  }
+
+  /// Forzar resincronización del catálogo para agregar nuevos ejercicios.
+  static Future<void> _migrateTo12(Database d) async {
+    await d.delete('meta', where: "key = 'catalog_hash'");
+  }
+
   /// '1,3,5' -> [1, 3, 5] (1 = lunes ... 7 = domingo, como DateTime.weekday). Vacío o null = sin día fijo.
   static List<int> parseDays(String? raw) =>
       raw == null || raw.isEmpty ? [] : [for (final s in raw.split(',')) int.parse(s)];
@@ -129,7 +179,7 @@ class Db {
       await File(tmp).writeAsBytes(bytes, flush: true);
       final src = await openDatabase(tmp, readOnly: true);
       final rows = await src.rawQuery(
-          'SELECT e.id, e.nombre, e.equipo, e.descripcion, g.nombre AS grupo '
+          'SELECT e.id, e.nombre, e.equipo, e.descripcion, e.location_id, g.nombre AS grupo '
           'FROM ejercicios e JOIN grupos_musculares g ON g.id = e.grupo_id ORDER BY e.id');
       await src.close();
       await File(tmp).delete();
@@ -151,6 +201,7 @@ class Db {
             'ext_id': extId,
             'custom': 0,
             'active': 1,
+            'location_id': (r['location_id'] as int?) ?? 1,
           };
           seen.add(extId);
 
@@ -191,7 +242,7 @@ class Db {
   }
 
   // ---------- Catálogo y rutinas ----------
-  static const _exCols = ['id', 'name', 'category', 'sub', 'reps', 'tip', 'unit', 'custom', 'equipment', 'descr'];
+  static const _exCols = ['id', 'name', 'category', 'sub', 'reps', 'tip', 'unit', 'custom', 'equipment', 'descr', 'location_id'];
   static const _manageCols = [..._exCols, 'active', 'deleted'];
 
   /// Ejercicios para armar rutinas (sin cardio, sin los ocultos y sin los que borraste).
@@ -223,6 +274,7 @@ class Db {
     required String equipment,
     required String descr,
     required String tip,
+    int locationId = 1,
   }) async =>
       (await db).update(
         'exercises',
@@ -235,6 +287,7 @@ class Db {
           'equipment': equipment,
           'descr': descr,
           'tip': tip,
+          'location_id': locationId,
         },
         where: 'id = ?',
         whereArgs: [id],
@@ -290,7 +343,7 @@ class Db {
 
   /// Crea un ejercicio propio. Lanza error si el nombre ya existe.
   static Future<int> addExercise(String name, String group, String reps, String unit,
-          [String descr = '']) async =>
+          [String descr = '', int locationId = 1]) async =>
       (await db).insert('exercises', {
         'name': name,
         'category': categoryOf(group),
@@ -302,6 +355,7 @@ class Db {
         'equipment': '',
         'descr': descr,
         'active': 1,
+        'location_id': locationId,
       });
 
   static Future<List<Map<String, Object?>>> routines() async => (await db).rawQuery(
@@ -466,7 +520,7 @@ class Db {
       'version': backupVersion,
       'created': DateTime.now().toIso8601String(),
       'custom_exercises': await d.query('exercises',
-          columns: ['name', 'category', 'sub', 'reps', 'tip', 'unit', 'equipment', 'descr'], where: 'custom = 1'),
+          columns: ['name', 'category', 'sub', 'reps', 'tip', 'unit', 'equipment', 'descr', 'location_id'], where: 'custom = 1'),
       'routines': routines,
       'logs': await d.query('logs'),
       'bike': await d.query('bike', columns: ['date', 'seconds', 'exercise']),
@@ -485,7 +539,14 @@ class Db {
     var bikes = 0, routines = 0;
     await d.transaction((t) async {
       for (final e in (data['custom_exercises'] as List? ?? const [])) {
-        await t.insert('exercises', {...Map<String, Object?>.from(e as Map), 'custom': 1, 'active': 1},
+        final exData = Map<String, Object?>.from(e as Map);
+        // Manejar ambas versiones: location (string antiguo) y location_id (nuevo)
+        if (exData.containsKey('location') && !exData.containsKey('location_id')) {
+          final loc = exData['location'] as String? ?? 'GYM';
+          exData['location_id'] = loc == 'CASA' ? 2 : 1;
+        }
+        exData['location_id'] ??= 1;
+        await t.insert('exercises', {...exData, 'custom': 1, 'active': 1},
             conflictAlgorithm: ConflictAlgorithm.ignore);
       }
 

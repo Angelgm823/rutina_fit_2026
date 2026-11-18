@@ -13,7 +13,7 @@ class ExercisePicker extends StatefulWidget {
 class _ExercisePickerState extends State<ExercisePicker> {
   List<Ex> all = [];
   late final List<int> order = [for (final e in widget.selected) e.id]; // orden de selección
-  String cat = 'Todos', sub = 'Todas', query = '';
+  String cat = 'Todos', sub = 'Todas', query = '', location = 'Todos';
   bool loading = true;
 
   @override
@@ -32,16 +32,20 @@ class _ExercisePickerState extends State<ExercisePicker> {
           if (cat == 'Todos' || s.value == cat) s.key,
       ];
 
-  List<Ex> get shown {
+  List<Ex> get _filtered {
     final q = query.trim().toLowerCase();
     return [
       for (final e in all)
         if ((cat == 'Todos' || e.category == cat) &&
             (sub == 'Todas' || e.sub == sub) &&
+            (location == 'Todos' || (location == 'GYM' && e.locationId == 1) || (location == 'CASA' && e.locationId == 2)) &&
             (q.isEmpty || e.name.toLowerCase().contains(q) || e.equipment.toLowerCase().contains(q)))
           e,
     ];
   }
+
+  List<Ex> get shownCasa => [for (final e in _filtered) if (e.locationId == 2) e];
+  List<Ex> get shownGym => [for (final e in _filtered) if (e.locationId == 1) e];
 
   void _toggle(Ex e, bool on) => setState(() {
         if (on) {
@@ -57,6 +61,7 @@ class _ExercisePickerState extends State<ExercisePicker> {
     final descr = TextEditingController();
     var subSel = sub != 'Todas' ? sub : groups.keys.first;
     var unit = 'reps';
+    var locationId = 1; // 1=GYM, 2=CASA
     final ok = await showDialog<bool>(
       context: context,
       builder: (c) => StatefulBuilder(
@@ -76,6 +81,17 @@ class _ExercisePickerState extends State<ExercisePicker> {
                 items: [for (final s in groups.keys) DropdownMenuItem(value: s, child: Text('$s (${groups[s]})'))],
                 onChanged: (v) => set(() => subSel = v ?? subSel),
               ),
+              const SizedBox(height: 12),
+              SegmentedButton<int>(
+                showSelectedIcon: false,
+                segments: const [
+                  ButtonSegment(value: 1, label: Text('GYM')),
+                  ButtonSegment(value: 2, label: Text('CASA')),
+                ],
+                selected: {locationId},
+                onSelectionChanged: (v) => set(() => locationId = v.first),
+              ),
+              const SizedBox(height: 12),
               TextField(controller: reps, decoration: const InputDecoration(labelText: 'Repeticiones sugeridas')),
               const SizedBox(height: 12),
               DropdownButton<String>(
@@ -108,7 +124,7 @@ class _ExercisePickerState extends State<ExercisePicker> {
     if (ok != true || name.text.trim().isEmpty) return;
     try {
       final id = await Db.addExercise(name.text.trim(), subSel,
-          reps.text.trim().isEmpty ? '8–12' : reps.text.trim(), unit, descr.text.trim());
+          reps.text.trim().isEmpty ? '8–12' : reps.text.trim(), unit, descr.text.trim(), locationId);
       await _load();
       setState(() => order.add(id));
     } catch (_) {
@@ -121,7 +137,6 @@ class _ExercisePickerState extends State<ExercisePicker> {
 
   @override
   Widget build(BuildContext c) {
-    final list = shown;
     return Scaffold(
       appBar: AppBar(
         title: const Text('Elegir ejercicios'),
@@ -144,6 +159,19 @@ class _ExercisePickerState extends State<ExercisePicker> {
                     cat = v.first;
                     sub = 'Todas';
                   }),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+                child: SegmentedButton<String>(
+                  showSelectedIcon: false,
+                  segments: const [
+                    ButtonSegment(value: 'Todos', label: Text('Todos')),
+                    ButtonSegment(value: 'GYM', label: Text('GYM')),
+                    ButtonSegment(value: 'CASA', label: Text('CASA')),
+                  ],
+                  selected: {location},
+                  onSelectionChanged: (v) => setState(() => location = v.first),
                 ),
               ),
               SizedBox(
@@ -181,26 +209,62 @@ class _ExercisePickerState extends State<ExercisePicker> {
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Row(children: [
                   const Spacer(),
-                  Text('${list.length} ejercicios', style: const TextStyle(fontSize: 12)),
+                  Text('${shownCasa.length + shownGym.length} ejercicios', style: const TextStyle(fontSize: 12)),
                 ]),
               ),
               Expanded(
-                child: list.isEmpty
+                child: shownCasa.isEmpty && shownGym.isEmpty
                     ? const Center(child: Text('No hay ejercicios con esos filtros.'))
-                    : ListView.builder(
-                        itemCount: list.length,
-                        itemBuilder: (c, i) {
-                          final e = list[i];
-                          final eq = e.equipment;
-                          return CheckboxListTile(
-                            value: order.contains(e.id),
-                            controlAffinity: ListTileControlAffinity.leading,
-                            secondary: ExerciseInfoButton(e),
-                            onChanged: (v) => _toggle(e, v ?? false),
-                            title: Text(e.name),
-                            subtitle: Text('${e.sub}${eq.isEmpty ? '' : ' · $eq'}${e.custom ? ' · Mío' : ''}'),
-                          );
-                        },
+                    : ListView(
+                        children: [
+                          // Sección CASA
+                          if (shownCasa.isNotEmpty) ...[
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                              child: Row(children: [
+                                Icon(Icons.home, size: 18, color: Theme.of(c).colorScheme.primary),
+                                const SizedBox(width: 8),
+                                Text('CASA (${shownCasa.length})',
+                                    style: Theme.of(c).textTheme.labelLarge),
+                              ]),
+                            ),
+                            ...shownCasa.map((e) {
+                              final eq = e.equipment;
+                              return CheckboxListTile(
+                                value: order.contains(e.id),
+                                controlAffinity: ListTileControlAffinity.leading,
+                                secondary: ExerciseInfoButton(e),
+                                onChanged: (v) => _toggle(e, v ?? false),
+                                title: Text(e.name),
+                                subtitle: Text('${e.sub}${eq.isEmpty ? '' : ' · $eq'}${e.custom ? ' · Mío' : ''}'),
+                              );
+                            }),
+                          ],
+                          // Sección GYM
+                          if (shownGym.isNotEmpty) ...[
+                            if (shownCasa.isNotEmpty) const Divider(height: 24),
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                              child: Row(children: [
+                                Icon(Icons.fitness_center, size: 18, color: Theme.of(c).colorScheme.primary),
+                                const SizedBox(width: 8),
+                                Text('GYM (${shownGym.length})',
+                                    style: Theme.of(c).textTheme.labelLarge),
+                              ]),
+                            ),
+                            ...shownGym.map((e) {
+                              final eq = e.equipment;
+                              return CheckboxListTile(
+                                value: order.contains(e.id),
+                                controlAffinity: ListTileControlAffinity.leading,
+                                secondary: ExerciseInfoButton(e),
+                                onChanged: (v) => _toggle(e, v ?? false),
+                                title: Text(e.name),
+                                subtitle: Text('${e.sub}${eq.isEmpty ? '' : ' · $eq'}${e.custom ? ' · Mío' : ''}'),
+                              );
+                            }),
+                          ],
+                        ],
                       ),
               ),
             ]),

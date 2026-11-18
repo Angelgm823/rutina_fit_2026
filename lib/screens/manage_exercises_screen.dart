@@ -29,7 +29,7 @@ class _ManageExercisesScreenState extends State<ManageExercisesScreen> {
     super.dispose();
   }
 
-  List<ManagedEx> get _shown {
+  List<ManagedEx> get _filtered {
     final q = query.trim().toLowerCase();
     return [
       for (final e in ctrl.all)
@@ -39,6 +39,9 @@ class _ManageExercisesScreenState extends State<ManageExercisesScreen> {
     ];
   }
 
+  List<ManagedEx> get _shownCasa => [for (final e in _filtered) if (e.locationId == 2) e];
+  List<ManagedEx> get _shownGym => [for (final e in _filtered) if (e.locationId == 1) e];
+
   Future<void> _edit(ManagedEx e) async {
     final name = TextEditingController(text: e.name);
     final reps = TextEditingController(text: e.reps);
@@ -46,6 +49,7 @@ class _ManageExercisesScreenState extends State<ManageExercisesScreen> {
     final descr = TextEditingController(text: e.descr);
     var subSel = _subOptions.contains(e.sub) ? e.sub : _subOptions.first;
     var unit = e.unit == 'seg' ? 'seg' : 'reps';
+    var locationId = e.locationId;
     final ok = await showDialog<bool>(
       context: context,
       builder: (c) => StatefulBuilder(
@@ -64,6 +68,16 @@ class _ManageExercisesScreenState extends State<ManageExercisesScreen> {
                 value: subSel,
                 items: [for (final s in _subOptions) DropdownMenuItem(value: s, child: Text(s))],
                 onChanged: (v) => set(() => subSel = v ?? subSel),
+              ),
+              const SizedBox(height: 12),
+              SegmentedButton<int>(
+                showSelectedIcon: false,
+                segments: const [
+                  ButtonSegment(value: 1, label: Text('GYM')),
+                  ButtonSegment(value: 2, label: Text('CASA')),
+                ],
+                selected: {locationId},
+                onSelectionChanged: (v) => set(() => locationId = v.first),
               ),
               const SizedBox(height: 12),
               TextField(controller: reps, decoration: const InputDecoration(labelText: 'Repeticiones sugeridas')),
@@ -105,6 +119,7 @@ class _ManageExercisesScreenState extends State<ManageExercisesScreen> {
         equipment: equipment.text.trim(),
         descr: descr.text.trim(),
         tip: e.tip,
+        locationId: locationId,
       );
     } catch (_) {
       if (mounted) {
@@ -153,11 +168,40 @@ class _ManageExercisesScreenState extends State<ManageExercisesScreen> {
     if (ok == true) await ctrl.hardDelete(e.id);
   }
 
+  Widget _buildExerciseCard(BuildContext c, ManagedEx e) => Card(
+        margin: const EdgeInsets.only(bottom: 8),
+        child: ListTile(
+          title: Text(e.name),
+          subtitle: Text(
+              '${e.sub}${e.equipment.isEmpty ? '' : ' · ${e.equipment}'}${e.custom ? ' · Mío' : ''}'),
+          trailing: Wrap(crossAxisAlignment: WrapCrossAlignment.center, children: [
+            if (e.deleted)
+              const Padding(
+                padding: EdgeInsets.only(right: 4),
+                child: Chip(label: Text('Eliminado'), visualDensity: VisualDensity.compact),
+              ),
+            PopupMenuButton<String>(
+              onSelected: (v) => switch (v) {
+                'edit' => _edit(e),
+                'delete' => _softDelete(e),
+                'restore' => _restore(e),
+                _ => _hardDelete(e),
+              },
+              itemBuilder: (_) => [
+                if (!e.deleted) const PopupMenuItem(value: 'edit', child: Text('Editar')),
+                if (!e.deleted) const PopupMenuItem(value: 'delete', child: Text('Eliminar')),
+                if (e.deleted) const PopupMenuItem(value: 'restore', child: Text('Restaurar')),
+                const PopupMenuItem(value: 'hard', child: Text('Borrar definitivamente')),
+              ],
+            ),
+          ]),
+        ),
+      );
+
   @override
   Widget build(BuildContext c) => ListenableBuilder(
         listenable: ctrl,
         builder: (c, _) {
-          final list = _shown;
           return Scaffold(
             appBar: AppBar(title: const Text('Gestionar ejercicios')),
             body: !ctrl.loaded
@@ -189,41 +233,39 @@ class _ManageExercisesScreenState extends State<ManageExercisesScreen> {
                       ),
                     ),
                     Expanded(
-                      child: list.isEmpty
+                      child: _shownCasa.isEmpty && _shownGym.isEmpty
                           ? const Center(child: Text('No hay ejercicios con esos filtros.'))
-                          : ListView.builder(
+                          : ListView(
                               padding: const EdgeInsets.all(16),
-                              itemCount: list.length,
-                              itemBuilder: (c, i) {
-                                final e = list[i];
-                                return Card(
-                                  child: ListTile(
-                                    title: Text(e.name),
-                                    subtitle: Text(
-                                        '${e.sub}${e.equipment.isEmpty ? '' : ' · ${e.equipment}'}${e.custom ? ' · Mío' : ''}'),
-                                    trailing: Wrap(crossAxisAlignment: WrapCrossAlignment.center, children: [
-                                      if (e.deleted) const Padding(
-                                        padding: EdgeInsets.only(right: 4),
-                                        child: Chip(label: Text('Eliminado'), visualDensity: VisualDensity.compact),
-                                      ),
-                                      PopupMenuButton<String>(
-                                        onSelected: (v) => switch (v) {
-                                          'edit' => _edit(e),
-                                          'delete' => _softDelete(e),
-                                          'restore' => _restore(e),
-                                          _ => _hardDelete(e),
-                                        },
-                                        itemBuilder: (_) => [
-                                          if (!e.deleted) const PopupMenuItem(value: 'edit', child: Text('Editar')),
-                                          if (!e.deleted) const PopupMenuItem(value: 'delete', child: Text('Eliminar')),
-                                          if (e.deleted) const PopupMenuItem(value: 'restore', child: Text('Restaurar')),
-                                          const PopupMenuItem(value: 'hard', child: Text('Borrar definitivamente')),
-                                        ],
-                                      ),
+                              children: [
+                                // Sección CASA
+                                if (_shownCasa.isNotEmpty) ...[
+                                  Padding(
+                                    padding: const EdgeInsets.fromLTRB(0, 8, 0, 12),
+                                    child: Row(children: [
+                                      Icon(Icons.home, size: 18, color: Theme.of(c).colorScheme.primary),
+                                      const SizedBox(width: 8),
+                                      Text('CASA (${_shownCasa.length})',
+                                          style: Theme.of(c).textTheme.labelLarge),
                                     ]),
                                   ),
-                                );
-                              },
+                                  ..._shownCasa.map((e) => _buildExerciseCard(c, e)),
+                                ],
+                                // Sección GYM
+                                if (_shownGym.isNotEmpty) ...[
+                                  if (_shownCasa.isNotEmpty) const SizedBox(height: 20),
+                                  Padding(
+                                    padding: const EdgeInsets.fromLTRB(0, 8, 0, 12),
+                                    child: Row(children: [
+                                      Icon(Icons.fitness_center, size: 18, color: Theme.of(c).colorScheme.primary),
+                                      const SizedBox(width: 8),
+                                      Text('GYM (${_shownGym.length})',
+                                          style: Theme.of(c).textTheme.labelLarge),
+                                    ]),
+                                  ),
+                                  ..._shownGym.map((e) => _buildExerciseCard(c, e)),
+                                ],
+                              ],
                             ),
                     ),
                   ]),
