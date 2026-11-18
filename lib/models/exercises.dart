@@ -20,8 +20,9 @@ String setText(Kind k, num w, int reps, [String unit = 'reps']) => switch (k) {
 
 class Ex {
   final int id;
-  final String name, category, sub, reps, tip, unit, equipment, descr, location;
+  final String name, category, sub, reps, tip, unit, equipment, descr;
   final bool custom;
+  final int locationId;
   const Ex({
     required this.id,
     required this.name,
@@ -33,8 +34,10 @@ class Ex {
     required this.custom,
     this.equipment = '',
     this.descr = '',
-    this.location = 'GYM',
+    this.locationId = 1,
   });
+
+  String get location => locationId == 2 ? 'CASA' : 'GYM';
 
   Kind get kind => kindOf(name, equipment, unit);
 
@@ -49,7 +52,7 @@ class Ex {
         custom: m['custom'] == 1,
         equipment: (m['equipment'] as String?) ?? '',
         descr: (m['descr'] as String?) ?? '',
-        location: (m['location'] as String?) ?? 'GYM',
+        locationId: (m['location_id'] as int?) ?? 1,
       );
 }
 
