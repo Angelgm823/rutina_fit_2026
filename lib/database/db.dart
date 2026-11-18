@@ -15,7 +15,7 @@ class Db {
 
   static Future<Database> get db async => _db ??= await openDatabase(
         p.join(await getDatabasesPath(), 'rutina.db'),
-        version: 11,
+        version: 12,
         onCreate: (d, v) async {
           await d.execute('''
             CREATE TABLE logs(
@@ -32,6 +32,7 @@ class Db {
           if (o < 9) await _migrateTo9(d);
           if (o < 10) await _migrateTo10(d);
           if (o < 11) await _migrateTo11(d);
+          if (o < 12) await _migrateTo12(d);
         },
         // Cada vez que abre la app compara tu ejercicios.db con el último que importó.
         onOpen: _syncCatalog,
@@ -140,6 +141,11 @@ class Db {
 
   /// Forzar resincronización del catálogo para actualizar location_id desde el catálogo.
   static Future<void> _migrateTo11(Database d) async {
+    await d.delete('meta', where: "key = 'catalog_hash'");
+  }
+
+  /// Forzar resincronización del catálogo para agregar nuevos ejercicios.
+  static Future<void> _migrateTo12(Database d) async {
     await d.delete('meta', where: "key = 'catalog_hash'");
   }
 
