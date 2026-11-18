@@ -6,6 +6,7 @@ class ManagedEx {
   final int id;
   final String name, category, sub, reps, tip, unit, equipment, descr;
   final bool custom, active, deleted;
+  final int locationId;
   const ManagedEx({
     required this.id,
     required this.name,
@@ -19,7 +20,10 @@ class ManagedEx {
     required this.custom,
     required this.active,
     required this.deleted,
+    this.locationId = 1,
   });
+
+  String get location => locationId == 2 ? 'CASA' : 'GYM';
 
   factory ManagedEx.fromMap(Map<String, Object?> m) => ManagedEx(
         id: m['id'] as int,
@@ -34,6 +38,7 @@ class ManagedEx {
         custom: m['custom'] == 1,
         active: m['active'] == 1,
         deleted: m['deleted'] == 1,
+        locationId: (m['location_id'] as int?) ?? 1,
       );
 }
 
@@ -61,8 +66,9 @@ class ManageExercisesController extends ChangeNotifier {
     required String equipment,
     required String descr,
     required String tip,
+    int locationId = 1,
   }) async {
-    await Db.updateExercise(id, name: name, group: group, reps: reps, unit: unit, equipment: equipment, descr: descr, tip: tip);
+    await Db.updateExercise(id, name: name, group: group, reps: reps, unit: unit, equipment: equipment, descr: descr, tip: tip, locationId: locationId);
     await load();
   }
 
