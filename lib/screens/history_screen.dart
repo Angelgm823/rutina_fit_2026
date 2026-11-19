@@ -42,9 +42,11 @@ class _HistoryState extends State<History> {
     listenable: ctrl,
     builder: (c, _) {
       if (!ctrl.loaded) return const Center(child: CircularProgressIndicator());
-      return RefreshIndicator(
-        onRefresh: ctrl.load,
-        child: ListView(
+      return SafeArea(
+        bottom: false,
+        child: RefreshIndicator(
+          onRefresh: ctrl.load,
+          child: ListView(
           children: ctrl.items.isEmpty
               ? const [
                   SizedBox(height: 200),
@@ -59,6 +61,7 @@ class _HistoryState extends State<History> {
                       onTap: it.cardio ? null : () => _showDetail(it),
                     ),
                 ],
+          ),
         ),
       );
     },

@@ -80,21 +80,24 @@ class _WorkoutState extends State<Workout> {
           ),
         ],
       ),
-      body: ctrl.loading
-          ? const Center(child: CircularProgressIndicator())
-          : ListView(
-              padding: const EdgeInsets.all(12),
-              children: [
-                DayPicker(
-                  selected: ctrl.date,
-                  onChanged: ctrl.changeDate,
-                  routineDays: ctrl.days.toSet(),
-                ),
-                if (ctrl.dayMismatch) _mismatchBanner(),
-                const SizedBox(height: 12),
-                for (final e in ctrl.exs) _card(e),
-              ],
-            ),
+      body: SafeArea(
+        bottom: false,
+        child: ctrl.loading
+            ? const Center(child: CircularProgressIndicator())
+            : ListView(
+                padding: const EdgeInsets.all(12),
+                children: [
+                  DayPicker(
+                    selected: ctrl.date,
+                    onChanged: ctrl.changeDate,
+                    routineDays: ctrl.days.toSet(),
+                  ),
+                  if (ctrl.dayMismatch) _mismatchBanner(),
+                  const SizedBox(height: 12),
+                  for (final e in ctrl.exs) _card(e),
+                ],
+              ),
+      ),
       bottomNavigationBar: _restBar(),
     ),
   );
@@ -219,39 +222,57 @@ class _WorkoutState extends State<Workout> {
     );
   }
 
-  /// Hoja para fijar (o quitar) la meta de tiempo de una serie cronometrada, con un slider dinámico.
+  /// Diálogo para fijar (o quitar) la meta de tiempo de una serie cronometrada.
   Future<void> _pickGoal(Ex e, int i, SetData s) async {
     var val = s.goal;
-    await showModalBottomSheet(
+    await showDialog(
       context: context,
-      builder: (c) => StatefulBuilder(
-        builder: (c, setSheetState) => Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('Meta de tiempo', style: Theme.of(c).textTheme.titleMedium),
-              const SizedBox(height: 4),
-              Text(
-                'Déjalo en 0 para aguantar sin límite.',
-                style: Theme.of(c).textTheme.bodySmall,
-                textAlign: TextAlign.center,
-              ),
-              CountdownTimer(
-                total: val,
-                remaining: val,
-                running: false,
-                maxSeconds: 300,
-                onTotalChanged: (v) => setSheetState(() => val = v),
-              ),
-              FilledButton(
-                onPressed: () {
-                  ctrl.setGoal(e, i, val);
-                  Navigator.pop(c);
-                },
-                child: const Text('Listo'),
-              ),
-            ],
+      builder: (c) => Dialog(
+        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 100),
+        child: StatefulBuilder(
+          builder: (c, setSheetState) => Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('Meta de tiempo', style: Theme.of(c).textTheme.titleMedium),
+                const SizedBox(height: 4),
+                Text(
+                  'Déjalo en 0 para aguantar sin límite.',
+                  style: Theme.of(c).textTheme.bodySmall,
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 12),
+                CountdownTimer(
+                  total: val,
+                  remaining: val,
+                  running: false,
+                  maxSeconds: 300,
+                  onTotalChanged: (v) => setSheetState(() => val = v),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.pop(c),
+                        child: const Text('Cancelar'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: FilledButton(
+                        onPressed: () {
+                          ctrl.setGoal(e, i, val);
+                          Navigator.pop(c);
+                        },
+                        child: const Text('Listo'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
       ),

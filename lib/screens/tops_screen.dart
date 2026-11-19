@@ -79,26 +79,32 @@ class _TopsState extends State<Tops> {
         builder: (c, _) {
           if (!ctrl.loaded) return const Center(child: CircularProgressIndicator());
           if (ctrl.isEmpty) {
-            return RefreshIndicator(
-              onRefresh: ctrl.load,
-              child: ListView(
+            return SafeArea(
+              bottom: false,
+              child: RefreshIndicator(
+                onRefresh: ctrl.load,
+                child: ListView(
                 padding: const EdgeInsets.all(24),
                 children: const [
                   SizedBox(height: 120),
                   Text('Guarda una sesión para ver tus mejores marcas.', textAlign: TextAlign.center),
                 ],
               ),
+              ),
             );
           }
-          return RefreshIndicator(
-            onRefresh: ctrl.load,
-            child: ListView(
+          return SafeArea(
+            bottom: false,
+            child: RefreshIndicator(
+              onRefresh: ctrl.load,
+              child: ListView(
               padding: const EdgeInsets.all(16),
               children: [
                 if (ctrl.cardio.isNotEmpty) _cardioCard(),
                 if (ctrl.weights.isNotEmpty) _header(Icons.fitness_center, 'Top 3 · Peso por ejercicio'),
                 for (final g in ctrl.weights) _weightCard(g),
               ],
+            ),
             ),
           );
         },

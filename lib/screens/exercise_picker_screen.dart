@@ -142,9 +142,11 @@ class _ExercisePickerState extends State<ExercisePicker> {
         title: const Text('Elegir ejercicios'),
         actions: [IconButton(icon: const Icon(Icons.add), tooltip: 'Nuevo ejercicio', onPressed: _newExercise)],
       ),
-      body: loading
-          ? const Center(child: CircularProgressIndicator())
-          : Column(children: [
+      body: SafeArea(
+        bottom: false,
+        child: loading
+            ? const Center(child: CircularProgressIndicator())
+            : Column(children: [
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
                 child: SegmentedButton<String>(
@@ -268,6 +270,7 @@ class _ExercisePickerState extends State<ExercisePicker> {
                       ),
               ),
             ]),
+            ),
       bottomNavigationBar: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(12),

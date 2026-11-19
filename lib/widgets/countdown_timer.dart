@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show FilteringTextInputFormatter;
+import 'package:rutina_fit/widgets/time_picker_wheel.dart';
 
 /// Temporizador de cuenta regresiva reutilizable: el tiempo se escribe en minutos y segundos
 /// (nada de opciones fijas) y baja de ahí a 0. El estado vive en el controller de cada
@@ -9,6 +9,7 @@ class CountdownTimer extends StatefulWidget {
   final int remaining; // segundos que faltan (válido mientras running o pausado)
   final bool running;
   final int maxSeconds; // tope permitido
+  final bool showSlider; // mostrar slider para ajustar tiempo
 
   /// Null = los campos de minutos/segundos no se muestran (p. ej. mientras corre).
   final ValueChanged<int>? onTotalChanged;
@@ -28,6 +29,7 @@ class CountdownTimer extends StatefulWidget {
     this.onPause,
     this.onReset,
     this.maxSeconds = 1800,
+    this.showSlider = false,
   });
 
   static String fmt(int s) => '${s ~/ 60}:${(s % 60).toString().padLeft(2, '0')}';
@@ -37,48 +39,15 @@ class CountdownTimer extends StatefulWidget {
 }
 
 class _CountdownTimerState extends State<CountdownTimer> {
-  late final _ctl = TextEditingController(text: CountdownTimer.fmt(widget.total));
-
-  @override
-  void didUpdateWidget(CountdownTimer old) {
-    super.didUpdateWidget(old);
-    if (widget.total == old.total || widget.running) return;
-    final text = CountdownTimer.fmt(widget.total);
-    if (_ctl.text != text) _ctl.text = text;
-  }
-
-  @override
-  void dispose() {
-    _ctl.dispose();
-    super.dispose();
-  }
-
-  /// Lee "mm:ss" (o solo segundos si no hay ":").
-  void _emit(String v) {
-    if (v.isEmpty) {
-      widget.onTotalChanged?.call(0);
-      return;
+  Future<void> _openTimePicker() async {
+    final result = await showTimePickerWheel(
+      context: context,
+      initialSeconds: widget.total,
+      maxSeconds: widget.maxSeconds,
+    );
+    if (result != null) {
+      widget.onTotalChanged?.call(result);
     }
-
-    final parts = v.split(':');
-    int m = 0;
-    int s = 0;
-
-    if (parts.length > 1) {
-      // Formato "mm:ss"
-      m = int.tryParse(parts[0]) ?? 0;
-      s = int.tryParse(parts[1]) ?? 0;
-    } else {
-      // Solo un número: si es > 59 asume minutos, si no segundos
-      final num = int.tryParse(v) ?? 0;
-      if (num > 59) {
-        m = num;
-      } else {
-        s = num;
-      }
-    }
-
-    widget.onTotalChanged?.call((m * 60 + s).clamp(0, widget.maxSeconds));
   }
 
   @override
@@ -97,16 +66,11 @@ class _CountdownTimerState extends State<CountdownTimer> {
         ),
         if (showInputs) ...[
           const SizedBox(height: 8),
-          SizedBox(
-            width: 90,
-            child: TextField(
-              controller: _ctl,
-              textAlign: TextAlign.center,
-              keyboardType: TextInputType.text,
-              inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9:]'))],
-              decoration: const InputDecoration(labelText: 'mm:ss', isDense: true, border: OutlineInputBorder()),
-              onChanged: _emit,
-            ),
+          IconButton(
+            onPressed: _openTimePicker,
+            icon: const Icon(Icons.schedule),
+            tooltip: 'Selector de tiempo',
+            iconSize: 32,
           ),
         ],
         if (widget.onStart != null || widget.onPause != null || widget.onReset != null) ...[

@@ -69,9 +69,10 @@ class _BikeState extends State<Bike> {
       },
       child: Scaffold(
         appBar: AppBar(title: Text(widget.name, overflow: TextOverflow.ellipsis)),
-        body: ListView(
-          padding: const EdgeInsets.all(24),
-          children: [
+        body: SafeArea(
+          child: ListView(
+            padding: const EdgeInsets.all(24),
+            children: [
             DayPicker(selected: ctrl.date, onChanged: ctrl.setDate),
             const SizedBox(height: 24),
             Center(
@@ -106,6 +107,7 @@ class _BikeState extends State<Bike> {
             const SizedBox(height: 16),
             SaveButton(onPressed: ctrl.canSave ? _save : null, label: 'Guardar sesión de cardio', expand: true),
           ],
+          ),
         ),
       ),
     );
