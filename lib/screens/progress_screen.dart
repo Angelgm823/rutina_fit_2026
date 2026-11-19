@@ -290,14 +290,17 @@ class _ProgressState extends State<Progress> {
     if (!ctrl.loaded) return const Center(child: CircularProgressIndicator());
     final t = Theme.of(c).textTheme;
     if (ctrl.isEmpty) {
-      return RefreshIndicator(
-        onRefresh: ctrl.load,
-        child: ListView(
+      return SafeArea(
+        bottom: false,
+        child: RefreshIndicator(
+          onRefresh: ctrl.load,
+          child: ListView(
           padding: const EdgeInsets.all(24),
           children: const [
             SizedBox(height: 120),
             Text('Guarda una sesión para ver tu progreso.', textAlign: TextAlign.center),
           ],
+        ),
         ),
       );
     }
@@ -305,9 +308,11 @@ class _ProgressState extends State<Progress> {
     final s = ctrl.strengthInPeriod;
     final cc = ctrl.cardioInPeriod;
 
-    return RefreshIndicator(
-      onRefresh: ctrl.load,
-      child: ListView(
+    return SafeArea(
+      bottom: false,
+      child: RefreshIndicator(
+        onRefresh: ctrl.load,
+        child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
           Row(
@@ -342,6 +347,7 @@ class _ProgressState extends State<Progress> {
           if (cc.isNotEmpty) _cardioSection(cc),
           const SizedBox(height: 16),
         ],
+        ),
       ),
     );
   }

@@ -92,10 +92,12 @@ class _RoutineEditorState extends State<RoutineEditor> {
         ),
       ],
     ),
-    body: loading
-        ? const Center(child: CircularProgressIndicator())
-        : Column(
-            children: [
+    body: SafeArea(
+      bottom: false,
+      child: loading
+          ? const Center(child: CircularProgressIndicator())
+          : Column(
+              children: [
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
                 child: TextField(
@@ -191,6 +193,7 @@ class _RoutineEditorState extends State<RoutineEditor> {
                 ),
               ),
             ],
-          ),
+            ),
+      ),
   );
 }

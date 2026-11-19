@@ -49,12 +49,14 @@ class _RoutinesScreenState extends State<RoutinesScreen> {
       future: future,
       builder: (c, s) {
         final rows = s.data ?? [];
-        return RefreshIndicator(
-          onRefresh: () async {
-            _reload();
-            await future;
-          },
-          child: ListView(
+        return SafeArea(
+          bottom: false,
+          child: RefreshIndicator(
+            onRefresh: () async {
+              _reload();
+              await future;
+            },
+            child: ListView(
             padding: const EdgeInsets.all(16),
             children: [
               Text('Mis rutinas', style: t.titleMedium),
@@ -134,7 +136,8 @@ class _RoutinesScreenState extends State<RoutinesScreen> {
               ),
             ],
           ),
-        );
+            ),
+          );
       },
     );
   }

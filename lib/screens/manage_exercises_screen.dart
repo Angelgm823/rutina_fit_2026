@@ -204,9 +204,11 @@ class _ManageExercisesScreenState extends State<ManageExercisesScreen> {
         builder: (c, _) {
           return Scaffold(
             appBar: AppBar(title: const Text('Gestionar ejercicios')),
-            body: !ctrl.loaded
-                ? const Center(child: CircularProgressIndicator())
-                : Column(children: [
+            body: SafeArea(
+              bottom: false,
+              child: !ctrl.loaded
+                  ? const Center(child: CircularProgressIndicator())
+                  : Column(children: [
                     Padding(
                       padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
                       child: SegmentedButton<String>(
@@ -269,6 +271,7 @@ class _ManageExercisesScreenState extends State<ManageExercisesScreen> {
                             ),
                     ),
                   ]),
+              ),
           );
         },
       );
