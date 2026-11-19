@@ -300,6 +300,15 @@ class _WorkoutState extends State<Workout> {
     onSelectionChanged: (v) => ctrl.setLevel(e, i, v.isEmpty ? null : v.first),
   );
 
+  String _formatRestTime(int seconds) {
+    if (seconds > 60) {
+      final mins = seconds ~/ 60;
+      final secs = seconds % 60;
+      return secs > 0 ? '$mins:${secs.toString().padLeft(2, '0')}' : '${mins}m';
+    }
+    return '${seconds}s';
+  }
+
   Widget _restBar() {
     final theme = Theme.of(context);
     final rest = ctrl.rest;
@@ -311,7 +320,7 @@ class _WorkoutState extends State<Workout> {
             ? Row(
                 children: [
                   Text(
-                    '${rest ~/ 60}:${(rest % 60).toString().padLeft(2, '0')}',
+                    _formatRestTime(rest),
                     style: theme.textTheme.headlineMedium,
                   ),
                   const Spacer(),
