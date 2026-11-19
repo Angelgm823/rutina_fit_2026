@@ -55,9 +55,29 @@ class _CountdownTimerState extends State<CountdownTimer> {
 
   /// Lee "mm:ss" (o solo segundos si no hay ":").
   void _emit(String v) {
+    if (v.isEmpty) {
+      widget.onTotalChanged?.call(0);
+      return;
+    }
+
     final parts = v.split(':');
-    final m = parts.length > 1 ? int.tryParse(parts[0]) ?? 0 : 0;
-    final s = int.tryParse(parts.last) ?? 0;
+    int m = 0;
+    int s = 0;
+
+    if (parts.length > 1) {
+      // Formato "mm:ss"
+      m = int.tryParse(parts[0]) ?? 0;
+      s = int.tryParse(parts[1]) ?? 0;
+    } else {
+      // Solo un número: si es > 59 asume minutos, si no segundos
+      final num = int.tryParse(v) ?? 0;
+      if (num > 59) {
+        m = num;
+      } else {
+        s = num;
+      }
+    }
+
     widget.onTotalChanged?.call((m * 60 + s).clamp(0, widget.maxSeconds));
   }
 
