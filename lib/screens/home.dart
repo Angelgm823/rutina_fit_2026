@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:rutina_fit/controllers/home_controller.dart';
+import 'package:rutina_fit/screens/alarms_screen.dart';
 import 'package:rutina_fit/screens/history_screen.dart';
 import 'package:rutina_fit/screens/manage_exercises_screen.dart';
 import 'package:rutina_fit/screens/progress_screen.dart';
@@ -32,6 +33,7 @@ class _HomeState extends State<Home> {
   void _onMenu(String v) => switch (v) {
         'theme' => showThemePicker(context),
         'manage' => Navigator.push(context, MaterialPageRoute(builder: (_) => const ManageExercisesScreen())),
+        'alarms' => Navigator.push(context, MaterialPageRoute(builder: (_) => const AlarmsScreen())),
         'export' => _run(ctrl.exportBackupFile),
         _ => _run(ctrl.importBackupFile),
       };
@@ -64,6 +66,10 @@ class _HomeState extends State<Home> {
                   PopupMenuItem(
                     value: 'manage',
                     child: ListTile(leading: Icon(Icons.edit_note), title: Text('Gestionar ejercicios')),
+                  ),
+                  PopupMenuItem(
+                    value: 'alarms',
+                    child: ListTile(leading: Icon(Icons.alarm), title: Text('Alarmas de ejercicio')),
                   ),
                   PopupMenuItem(
                     value: 'export',

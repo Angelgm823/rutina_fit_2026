@@ -2,12 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:rutina_fit/screens/home.dart';
 import 'package:rutina_fit/services/notifications.dart';
+import 'package:rutina_fit/services/exercise_alarms.dart';
 import 'package:rutina_fit/theme/app_theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await loadSavedTheme(); // tema que eligió el usuario
   TimerAlerts.init(); // quita avisos de temporizadores de una sesión anterior que quedaron colgados
+  ExerciseAlarms.init(); // carga y programa las alarmas de ejercicio
   runApp(const App());
 }
 
