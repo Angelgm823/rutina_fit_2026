@@ -145,12 +145,15 @@ class ExerciseAlarms {
         }
       }
 
-      // Si encontramos una próxima alarma, programar notificación solo si faltan 30 min o menos
+      // Si encontramos una próxima alarma, programar notificación solo si es HOY y faltan ≤30 min
       if (nextAlarmTime != null && nextAlarmName != null && nextAlarmId != null) {
         final timeUntilAlarm = nextAlarmTime.difference(now);
+        final isToday = nextAlarmTime.year == now.year &&
+            nextAlarmTime.month == now.month &&
+            nextAlarmTime.day == now.day;
 
-        // Solo programar si faltan 30 minutos o menos
-        if (timeUntilAlarm.inMinutes <= 30 && timeUntilAlarm.isNegative == false) {
+        // Solo programar si es HOY y faltan 30 minutos o menos
+        if (isToday && timeUntilAlarm.inMinutes <= 30 && timeUntilAlarm.isNegative == false) {
           final before30Id = nextAlarmId * 1000 + 1;
           final before30Time = nextAlarmTime.subtract(const Duration(minutes: 30));
 
