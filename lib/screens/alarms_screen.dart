@@ -17,20 +17,13 @@ class _AlarmsScreenState extends State<AlarmsScreen> {
     future = Db.getAlarms();
   });
 
-  Future<void> _openEditor(Map<String, Object?>? alarm) async {
-    final alarmId = alarm?['id'] as int?;
-    final routineId = alarm?['routine_id'] as int?;
-    final routineName = alarm?['routine_name'] as String?;
-
-    if (routineId == null || routineName == null) return;
-
+  Future<void> _openEditor([Map<String, Object?>? alarm]) async {
     await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => AlarmEditor(
-          id: alarmId,
-          routineId: routineId,
-          routineName: routineName,
+          id: alarm?['id'] as int?,
+          name: alarm?['name'] as String?,
           alarmTime: alarm?['alarm_time'] as String?,
           daysRaw: alarm?['days'] as String?,
         ),
@@ -39,12 +32,12 @@ class _AlarmsScreenState extends State<AlarmsScreen> {
     if (mounted) _reload();
   }
 
-  Future<void> _delete(int id, String name) async {
+  Future<void> _delete(int id, String alarmName) async {
     final ok = await showDialog<bool>(
       context: context,
       builder: (c) => AlertDialog(
-        title: Text('¿Eliminar alarma de "$name"?'),
-        content: const Text('No recibirás más notificaciones para esta rutina.'),
+        title: Text('¿Eliminar alarma "$alarmName"?'),
+        content: const Text('No recibirás más notificaciones de esta alarma.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancelar')),
           FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('Eliminar')),
@@ -102,58 +95,16 @@ class _AlarmsScreenState extends State<AlarmsScreen> {
                       ),
                     ),
                   for (final alarm in rows)
-                    _AlarmCard(
-                      alarm: alarm,
-                      onEdit: () => _openEditor(alarm),
-                      onDelete: () => _delete(alarm['id'] as int, alarm['routine_name'] as String),
-                      onToggle: (enabled) => _toggleAlarm(alarm['id'] as int, enabled),
-                    ),
+                    if (alarm['id'] != null && alarm['name'] != null)
+                      _AlarmCard(
+                        alarm: alarm,
+                        onEdit: () => _openEditor(alarm),
+                        onDelete: () => _delete(alarm['id'] as int, alarm['name'] as String),
+                        onToggle: (enabled) => _toggleAlarm(alarm['id'] as int, enabled),
+                      ),
                   const SizedBox(height: 4),
                   FilledButton.icon(
-                    onPressed: () async {
-                      final routines = await Db.routines();
-                      if (mounted) {
-                        final selected = await showDialog<Map<String, Object?>>(
-                          context: context,
-                          builder: (_) => AlertDialog(
-                            title: const Text('Selecciona una rutina'),
-                            content: SizedBox(
-                              width: double.maxFinite,
-                              child: ListView(
-                                shrinkWrap: true,
-                                children: [
-                                  for (final routine in routines)
-                                    ListTile(
-                                      title: Text(routine['name'] as String),
-                                      onTap: () {
-                                        Navigator.pop(context, routine);
-                                      },
-                                    ),
-                                ],
-                              ),
-                            ),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.pop(context),
-                                child: const Text('Cancelar'),
-                              ),
-                            ],
-                          ),
-                        );
-                        if (selected != null && mounted) {
-                          await Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => AlarmEditor(
-                                routineId: selected['id'] as int,
-                                routineName: selected['name'] as String,
-                              ),
-                            ),
-                          );
-                          if (mounted) _reload();
-                        }
-                      }
-                    },
+                    onPressed: () => _openEditor(),
                     icon: const Icon(Icons.add),
                     label: const Text('Nueva alarma'),
                   ),
@@ -185,8 +136,8 @@ class _AlarmCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final enabled = (alarm['enabled'] as int?) ?? 1;
     final isEnabled = enabled == 1;
-    final alarmTime = alarm['alarm_time'] as String;
-    final routineName = alarm['routine_name'] as String;
+    final alarmTime = (alarm['alarm_time'] as String?) ?? '--:--';
+    final alarmName = (alarm['name'] as String?) ?? 'Sin nombre';
     final daysStr = alarm['days'] as String?;
     final daysList = Db.parseDays(daysStr);
 
@@ -203,7 +154,7 @@ class _AlarmCard extends StatelessWidget {
             value: isEnabled,
             onChanged: onToggle,
           ),
-          title: Text(routineName),
+          title: Text(alarmName),
           subtitle: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [

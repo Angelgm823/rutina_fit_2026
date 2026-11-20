@@ -15,7 +15,7 @@ class Db {
 
   static Future<Database> get db async => _db ??= await openDatabase(
         p.join(await getDatabasesPath(), 'rutina.db'),
-        version: 13,
+        version: 14,
         onCreate: (d, v) async {
           await d.execute('''
             CREATE TABLE logs(
@@ -34,6 +34,7 @@ class Db {
           if (o < 11) await _migrateTo11(d);
           if (o < 12) await _migrateTo12(d);
           if (o < 13) await _migrateTo13(d);
+          if (o < 14) await _migrateTo14(d);
         },
         // Cada vez que abre la app compara tu ejercicios.db con el último que importó.
         onOpen: _syncCatalog,
@@ -60,6 +61,12 @@ class Db {
     await d.execute('CREATE TABLE routine_exercises(routine_id INTEGER, exercise_id INTEGER, '
         'position INTEGER, PRIMARY KEY(routine_id, exercise_id))');
     await d.execute('CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT)');
+    await d.execute('CREATE TABLE exercise_alarms('
+        'id INTEGER PRIMARY KEY AUTOINCREMENT, '
+        'name TEXT NOT NULL, '
+        'alarm_time TEXT NOT NULL, '
+        'days TEXT, '
+        'enabled INTEGER DEFAULT 1)');
   }
 
   static Future<void> _ensureColumn(Database d, String table, String col, String type) async {
@@ -150,17 +157,46 @@ class Db {
     await d.delete('meta', where: "key = 'catalog_hash'");
   }
 
-  /// Crear tabla de alarmas para rutinas de ejercicio.
+  /// Crear tabla de alarmas de ejercicio.
   static Future<void> _migrateTo13(Database d) async {
     await d.execute('''
       CREATE TABLE exercise_alarms(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        routine_id INTEGER,
-        routine_name TEXT NOT NULL,
+        name TEXT NOT NULL,
         alarm_time TEXT NOT NULL,
         days TEXT,
-        enabled INTEGER DEFAULT 1,
-        FOREIGN KEY(routine_id) REFERENCES routines(id))''');
+        enabled INTEGER DEFAULT 1)''');
+  }
+
+  /// Refactorizar tabla de alarmas: agregar columna name si falta.
+  static Future<void> _migrateTo14(Database d) async {
+    try {
+      // Verificar si la tabla tiene la columna name
+      final cols = await d.rawQuery('PRAGMA table_info(exercise_alarms)');
+      final hasName = cols.any((c) => c['name'] == 'name');
+
+      if (!hasName) {
+        // Si no tiene name, reconstruir la tabla
+        await d.execute('DROP TABLE IF EXISTS exercise_alarms');
+        await d.execute('''
+          CREATE TABLE exercise_alarms(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            alarm_time TEXT NOT NULL,
+            days TEXT,
+            enabled INTEGER DEFAULT 1)''');
+      }
+    } catch (_) {
+      // Si hay error, simplemente reconstruir
+      await d.execute('DROP TABLE IF EXISTS exercise_alarms');
+      await d.execute('''
+        CREATE TABLE exercise_alarms(
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          alarm_time TEXT NOT NULL,
+          days TEXT,
+          enabled INTEGER DEFAULT 1)''');
+    }
   }
 
   /// '1,3,5' -> [1, 3, 5] (1 = lunes ... 7 = domingo, como DateTime.weekday). Vacío o null = sin día fijo.
@@ -551,17 +587,19 @@ class Db {
     return r.isEmpty ? null : r.first;
   }
 
-  static Future<int> createAlarm(int routineId, String routineName, String alarmTime, [String? days]) async =>
+  static Future<int> createAlarm(String name, String alarmTime, [String? days]) async =>
       (await db).insert('exercise_alarms', {
-        'routine_id': routineId,
-        'routine_name': routineName,
+        'name': name,
         'alarm_time': alarmTime,
         'days': days,
         'enabled': 1,
       });
 
-  static Future<void> updateAlarm(int id, String alarmTime, [String? days, bool? enabled]) async {
-    final updates = <String, Object?>{'alarm_time': alarmTime};
+  static Future<void> updateAlarm(int id, String name, String alarmTime, [String? days, bool? enabled]) async {
+    final updates = <String, Object?>{
+      'name': name,
+      'alarm_time': alarmTime,
+    };
     if (days case final d?) updates['days'] = d;
     if (enabled case final e?) updates['enabled'] = e ? 1 : 0;
     await (await db).update('exercise_alarms', updates, where: 'id = ?', whereArgs: [id]);
