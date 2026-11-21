@@ -42,6 +42,7 @@ class ExerciseAlarms {
       channelShowBadge: false,
       usesChronometer: true,
       chronometerCountDown: true,
+      autoCancel: true,
     ),
   );
 
@@ -306,7 +307,7 @@ class ExerciseAlarms {
             priority: Priority.high,
             category: AndroidNotificationCategory.alarm,
             visibility: NotificationVisibility.public,
-            autoCancel: false,
+            autoCancel: true,
             actions: [
               AndroidNotificationAction(
                 'snooze_${alarmId}_5',
