@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:rutina_fit/controllers/workout_controller.dart';
 import 'package:rutina_fit/models/exercises.dart';
+import 'package:rutina_fit/services/rest_time_service.dart';
 import 'package:rutina_fit/widgets/countdown_timer.dart';
 import 'package:rutina_fit/widgets/day_picker.dart';
 import 'package:rutina_fit/widgets/exercise_info.dart';
@@ -301,10 +302,10 @@ class _WorkoutState extends State<Workout> {
   );
 
   String _formatRestTime(int seconds) {
-    if (seconds > 60) {
+    if (seconds >= 60) {
       final mins = seconds ~/ 60;
       final secs = seconds % 60;
-      return secs > 0 ? '$mins:${secs.toString().padLeft(2, '0')}' : '${mins}m';
+      return secs > 0 ? '${mins}m ${secs}s' : '${mins}m';
     }
     return '${seconds}s';
   }
@@ -332,22 +333,269 @@ class _WorkoutState extends State<Workout> {
                 children: [
                   const Icon(Icons.timer_outlined),
                   const SizedBox(width: 8),
-                  for (final s in [60, 90, 120])
-                    Padding(
-                      padding: const EdgeInsets.only(right: 6),
-                      child: ChoiceChip(
-                        label: Text('$s s'),
-                        showCheckmark: false,
-                        visualDensity: VisualDensity.compact,
-                        selected: ctrl.restTotal == s,
-                        onSelected: (_) => ctrl.setRestTotal(s),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          for (final s in [60, 90, 120])
+                            Padding(
+                              padding: const EdgeInsets.only(right: 6),
+                              child: ChoiceChip(
+                                label: Text(_formatRestTime(s)),
+                                showCheckmark: false,
+                                visualDensity: VisualDensity.compact,
+                                selected: ctrl.restTotal == s,
+                                onSelected: (_) => ctrl.setRestTotal(s),
+                              ),
+                            ),
+                          for (final customTime in RestTimeService.getCustomTimes())
+                            Padding(
+                              padding: const EdgeInsets.only(right: 6),
+                              child: GestureDetector(
+                                onLongPress: () => _showCustomTimeMenu(customTime),
+                                child: ChoiceChip(
+                                  label: Text(_formatRestTime(customTime.seconds)),
+                                  showCheckmark: false,
+                                  visualDensity: VisualDensity.compact,
+                                  selected: ctrl.restTotal == customTime.seconds,
+                                  onSelected: (_) => ctrl.setRestTotal(customTime.seconds),
+                                ),
+                              ),
+                            ),
+                          Padding(
+                            padding: const EdgeInsets.only(right: 6),
+                            child: ActionChip(
+                              label: const Text('+'),
+                              onPressed: _showAddRestTimeDialog,
+                              visualDensity: VisualDensity.compact,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                  const Spacer(),
+                  ),
+                  const SizedBox(width: 8),
                   FilledButton(onPressed: ctrl.startRest, child: const Text('Iniciar')),
                 ],
               ),
       ),
     );
+  }
+
+  Future<void> _showAddRestTimeDialog() async {
+    final controller = TextEditingController();
+    String unit = 's'; // 's' para segundos, 'm' para minutos
+
+    final result = await showDialog<int>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: const Text('Nuevo tiempo de descanso'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: controller,
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  hintText: 'Número',
+                  border: const OutlineInputBorder(),
+                  suffixIcon: Padding(
+                    padding: const EdgeInsets.all(4),
+                    child: SegmentedButton<String>(
+                      segments: const [
+                        ButtonSegment(label: Text('s'), value: 's'),
+                        ButtonSegment(label: Text('m'), value: 'm'),
+                      ],
+                      selected: {unit},
+                      onSelectionChanged: (Set<String> newSelection) {
+                        setState(() => unit = newSelection.first);
+                      },
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final value = int.tryParse(controller.text);
+                if (value == null || value <= 0) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Por favor ingresa un número válido'),
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
+                  return;
+                }
+                final seconds = unit == 'm' ? value * 60 : value;
+                if (seconds > 1800) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('El máximo es 30 minutos (1800 segundos)'),
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
+                  return;
+                }
+                Navigator.pop(context, seconds);
+              },
+              child: const Text('Guardar'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (result != null) {
+      await RestTimeService.addCustomTime(result);
+      setState(() {});
+      ctrl.setRestTotal(result);
+    }
+  }
+
+  Future<void> _showCustomTimeMenu(dynamic customTime) async {
+    final action = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('${_formatRestTime(customTime.seconds)} de descanso'),
+        content: const Text('¿Qué deseas hacer?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, 'edit'),
+            child: const Text('Editar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, 'delete'),
+            child: const Text('Eliminar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar'),
+          ),
+        ],
+      ),
+    );
+
+    if (action == 'edit') {
+      await _showEditRestTimeDialog(customTime);
+    } else if (action == 'delete') {
+      await _showDeleteConfirmDialog(customTime);
+    }
+  }
+
+  Future<void> _showEditRestTimeDialog(dynamic customTime) async {
+    final isMinutes = customTime.seconds >= 60 && customTime.seconds % 60 == 0;
+    String unit = isMinutes ? 'm' : 's';
+    final displayValue = isMinutes ? (customTime.seconds ~/ 60) : customTime.seconds;
+    final controller = TextEditingController(text: displayValue.toString());
+
+    final result = await showDialog<int>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: const Text('Editar tiempo de descanso'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: controller,
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  hintText: 'Número',
+                  border: const OutlineInputBorder(),
+                  suffixIcon: Padding(
+                    padding: const EdgeInsets.all(4),
+                    child: SegmentedButton<String>(
+                      segments: const [
+                        ButtonSegment(label: Text('s'), value: 's'),
+                        ButtonSegment(label: Text('m'), value: 'm'),
+                      ],
+                      selected: {unit},
+                      onSelectionChanged: (Set<String> newSelection) {
+                        setState(() => unit = newSelection.first);
+                      },
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final value = int.tryParse(controller.text);
+                if (value == null || value <= 0) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Por favor ingresa un número válido'),
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
+                  return;
+                }
+                final seconds = unit == 'm' ? value * 60 : value;
+                if (seconds > 1800) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('El máximo es 30 minutos (1800 segundos)'),
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
+                  return;
+                }
+                Navigator.pop(context, seconds);
+              },
+              child: const Text('Guardar'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (result != null) {
+      await RestTimeService.updateCustomTime(customTime.id, result);
+      setState(() {});
+      ctrl.setRestTotal(result);
+    }
+  }
+
+  Future<void> _showDeleteConfirmDialog(dynamic customTime) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Eliminar tiempo de descanso'),
+        content: Text('¿Eliminar ${_formatRestTime(customTime.seconds)}?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Eliminar'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await RestTimeService.deleteCustomTime(customTime.id);
+      setState(() {});
+      if (ctrl.restTotal == customTime.seconds) {
+        ctrl.setRestTotal(90);
+      }
+    }
   }
 }
