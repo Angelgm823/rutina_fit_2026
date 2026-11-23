@@ -3,6 +3,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:rutina_fit/screens/home.dart';
 import 'package:rutina_fit/services/notifications.dart';
 import 'package:rutina_fit/services/exercise_alarms.dart';
+import 'package:rutina_fit/services/rest_time_service.dart';
 import 'package:rutina_fit/theme/app_theme.dart';
 
 Future<void> main() async {
@@ -10,6 +11,7 @@ Future<void> main() async {
   await loadSavedTheme(); // tema que eligió el usuario
   TimerAlerts.init(); // quita avisos de temporizadores de una sesión anterior que quedaron colgados
   ExerciseAlarms.init(); // carga y programa las alarmas de ejercicio
+  await RestTimeService.init(); // carga tiempos de descanso personalizados
   runApp(const App());
 }
 
